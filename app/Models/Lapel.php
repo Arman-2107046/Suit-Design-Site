@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BustsConfiguratorCache;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Lapel extends Model
 {
+    use BustsConfiguratorCache;
+
     protected $fillable = [
 
         'fabric_id',

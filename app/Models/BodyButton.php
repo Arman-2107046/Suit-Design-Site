@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BustsConfiguratorCache;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BodyButton extends Model
 {
+    use BustsConfiguratorCache;
+
     protected $fillable = [
         'body_type_id',
         'button_image_id',

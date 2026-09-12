@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BustsConfiguratorCache;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ChestPocket extends Model
 {
+    use BustsConfiguratorCache;
+
     protected $fillable = [
         'fabric_id',
         'chest_pocket_type_id',

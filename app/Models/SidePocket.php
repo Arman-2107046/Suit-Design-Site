@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BustsConfiguratorCache;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SidePocket extends Model
 {
+    use BustsConfiguratorCache;
+
     protected $fillable = [
         'fabric_id',
         'side_pocket_type_id',

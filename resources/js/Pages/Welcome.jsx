@@ -1,1233 +1,790 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { Loader2, Layers, Scissors, Palette, Menu, X, AlertTriangle } from "lucide-react";
+import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from "react";
+import { Head } from "@inertiajs/react";
+import { Loader2, Layers, Scissors, Palette, Menu, X, RotateCcw, Sparkles } from "lucide-react";
 
-const DEBUG_DIAGRAMS = false;
+const STORAGE_KEY = "hockerty.premium.design.v1";
+const CANVAS_TIMEOUT_MS = 8000;
 
 /* ------------------------------------------------------------------ */
-/*  Smart Image Cache with Lazy Loading                                */
+/*  Image cache                                                        */
+/*                                                                     */
+/*  Foreground loads (`load` / `loadAll`) are what a commit waits on.  */
+/*  Background prefetch (`prefetch`) runs through a small concurrency  */
+/*  gate so warming up other fabrics never starves the current view.   */
 /* ------------------------------------------------------------------ */
-class SmartImageCache {
+class ImageCache {
     constructor() {
-        this.memoryCache = new Map();
-        this.loadingPromises = new Map();
-        this.listeners = new Set();
+        this.cache = new Map();     // url -> decoded HTMLImageElement
+        this.inflight = new Map();  // url -> Promise
+        this.failed = new Set();
+        this.queue = [];
+        this.queued = new Set();
+        this.running = 0;
+        this.maxBackground = 3;
     }
 
-    subscribe(listener) {
-        this.listeners.add(listener);
-        return () => this.listeners.delete(listener);
+    has(url) {
+        return this.cache.has(url);
     }
 
-    notifyListeners(loadingCount) {
-        this.listeners.forEach(listener => listener(loadingCount));
+    settled(url) {
+        return !url || this.cache.has(url) || this.failed.has(url);
     }
 
-    async preloadImage(url) {
-        if (!url) return null;
+    allSettled(urls) {
+        return urls.every((u) => this.settled(u));
+    }
 
-        if (this.memoryCache.has(url)) {
-            return this.memoryCache.get(url);
-        }
+    load(url) {
+        if (!url) return Promise.resolve(null);
+        if (this.cache.has(url)) return Promise.resolve(this.cache.get(url));
+        if (this.inflight.has(url)) return this.inflight.get(url);
 
-        if (this.loadingPromises.has(url)) {
-            return this.loadingPromises.get(url);
-        }
-
-        const loadPromise = new Promise((resolve) => {
+        const promise = new Promise((resolve) => {
             const img = new Image();
-            img.onload = () => {
-                this.memoryCache.set(url, img);
-                this.loadingPromises.delete(url);
-                this.notifyListeners(this.loadingPromises.size);
+            img.decoding = "async";
+            img.onload = async () => {
+                // Decode off the main thread now so the swap doesn't jank.
+                try { await img.decode(); } catch { /* still usable */ }
+                this.cache.set(url, img);
+                this.inflight.delete(url);
                 resolve(img);
             };
             img.onerror = () => {
                 console.warn(`Failed to load image: ${url}`);
-                this.loadingPromises.delete(url);
-                this.notifyListeners(this.loadingPromises.size);
+                this.failed.add(url);
+                this.inflight.delete(url);
                 resolve(null);
             };
             img.src = url;
         });
 
-        this.loadingPromises.set(url, loadPromise);
-        this.notifyListeners(this.loadingPromises.size);
-        return loadPromise;
+        this.inflight.set(url, promise);
+        return promise;
     }
 
-    async preloadBatch(urls, onProgress) {
-        const uniqueUrls = [...new Set(urls.filter(Boolean))];
-        const totalImages = uniqueUrls.length;
-        let loadedCount = 0;
+    loadAll(urls) {
+        return Promise.all([...new Set(urls.filter(Boolean))].map((u) => this.load(u)));
+    }
 
-        const uncachedUrls = uniqueUrls.filter(url => !this.memoryCache.has(url));
+    prefetch(urls, { front = false } = {}) {
+        const fresh = [...new Set(urls.filter(Boolean))].filter(
+            (u) => !this.settled(u) && !this.inflight.has(u) && !this.queued.has(u)
+        );
+        if (fresh.length === 0) return;
+        fresh.forEach((u) => this.queued.add(u));
+        if (front) this.queue.unshift(...fresh);
+        else this.queue.push(...fresh);
+        this.pump();
+    }
 
-        const batchSize = 6;
-        for (let i = 0; i < uncachedUrls.length; i += batchSize) {
-            const batch = uncachedUrls.slice(i, i + batchSize);
-            await Promise.all(batch.map(url => this.preloadImage(url)));
+    clearQueue() {
+        this.queue = [];
+        this.queued.clear();
+    }
 
-            loadedCount += batch.length;
-            const progress = (loadedCount / totalImages) * 100;
-            if (onProgress) onProgress(progress, loadedCount, totalImages);
+    pump() {
+        while (this.running < this.maxBackground && this.queue.length > 0) {
+            const url = this.queue.shift();
+            this.queued.delete(url);
+            if (this.settled(url)) continue;
+            this.running += 1;
+            this.load(url).finally(() => {
+                this.running -= 1;
+                this.pump();
+            });
         }
-
-        return uniqueUrls;
-    }
-
-    isImageCached(url) {
-        return this.memoryCache.has(url);
-    }
-
-    getLoadingCount() {
-        return this.loadingPromises.size;
-    }
-
-    areAllCached(urls) {
-        if (!urls || urls.length === 0) return true;
-        return urls.every(url => !url || this.memoryCache.has(url));
     }
 }
 
-const smartImageCache = new SmartImageCache();
+const imageCache = new ImageCache();
 
-/* ------------------------------------------------------------------ */
-/*  Loading indicator component                                        */
-/* ------------------------------------------------------------------ */
-const LoadingIndicator = ({ loadingCount }) => {
-    if (loadingCount === 0) return null;
-
-    return (
-        <div className="absolute top-4 right-4 z-50 flex items-center gap-2 px-3 py-1.5 bg-white/90 backdrop-blur-sm rounded-full shadow-lg animate-in fade-in slide-in-from-top-2">
-            <Loader2 className="w-3.5 h-3.5 text-gray-900 animate-spin" />
-            <span className="text-xs font-medium text-gray-700">
-                Loading {loadingCount} image{loadingCount > 1 ? 's' : ''}...
-            </span>
-        </div>
-    );
+const runWhenIdle = (fn) => {
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+        return window.requestIdleCallback(fn, { timeout: 1500 });
+    }
+    return setTimeout(fn, 150);
+};
+const cancelIdle = (handle) => {
+    if (typeof window !== "undefined" && "cancelIdleCallback" in window) window.cancelIdleCallback(handle);
+    else clearTimeout(handle);
 };
 
 /* ------------------------------------------------------------------ */
-/*  Canvas layer - shows cached image without spinner                 */
+/*  Selection resolution (pure)                                        */
+/*                                                                     */
+/*  `intent` is the user's semantic design: body type code, lapel      */
+/*  category + width, sleeve / pocket type codes, button image, lining */
+/*  choice. It is fabric-agnostic. `resolveSelection` maps it onto a   */
+/*  concrete fabric: exact record -> same type/code -> is_default ->   */
+/*  first available. Exact ids are globally unique so they only match  */
+/*  within the fabric they belong to; codes/type ids carry across.     */
 /* ------------------------------------------------------------------ */
-const CanvasLayer = ({ layer }) => {
-    const [displayedImage, setDisplayedImage] = useState(null);
-    const [isImageLoading, setIsImageLoading] = useState(false);
+const EMPTY_INTENT = {
+    body: null,        // { id, typeCode, typeId, name }
+    lapel: null,       // { id, categoryId, categoryName, subcategoryId, subcategoryName }
+    sleeve: null,      // { id, typeCode, typeId, name }
+    sidePocket: null,  // { id, typeCode, typeId, name }
+    chestPocket: null, // { id, typeCode, typeId, name }
+    button: null,      // { id, imageId, name } | null  (null = "Default", no overlay)
+    lining: { mode: "default", id: null, fabricId: null, typeId: null, name: null },
+};
 
-    useEffect(() => {
-        let isMounted = true;
+const defaultOf = (items) => items.find((i) => i.is_default) || items[0] || null;
+const byId = (items, id) => (id != null ? items.find((i) => i.id === id) : undefined);
 
-        const loadImage = async () => {
-            if (!layer.image) {
-                setDisplayedImage(null);
-                setIsImageLoading(false);
-                return;
-            }
-
-            if (displayedImage === layer.image) return;
-
-            if (smartImageCache.isImageCached(layer.image)) {
-                const cachedImg = smartImageCache.memoryCache.get(layer.image);
-                if (isMounted) {
-                    setDisplayedImage(layer.image);
-                    setIsImageLoading(false);
-                }
-                return;
-            }
-
-            setIsImageLoading(true);
-
-            const img = await smartImageCache.preloadImage(layer.image);
-            if (isMounted && img) {
-                setDisplayedImage(layer.image);
-                setIsImageLoading(false);
-            }
-        };
-
-        loadImage();
-
-        return () => {
-            isMounted = false;
-        };
-    }, [layer.image]);
-
-    const showSpinner = isImageLoading;
-
+function pickTyped(items, want) {
+    if (!items || items.length === 0) return null;
+    if (!want) return defaultOf(items);
     return (
-        <div
-            className="absolute inset-0 flex items-center justify-center overflow-hidden pointer-events-none"
-            style={{ zIndex: layer.layerIndex }}
-        >
-            <div className="relative flex items-center justify-center w-full h-full">
-                {displayedImage && (
-                    <img
-                        src={displayedImage}
-                        alt={layer.type}
-                        className="absolute inset-0 object-contain w-full h-full"
-                        style={{ opacity: 1 }}
-                        onError={(e) => {
-                            console.error(`Failed to load ${layer.type}:`, layer.image);
-                            e.target.style.display = "none";
-                        }}
-                    />
-                )}
+        byId(items, want.id) ||
+        (want.typeCode && items.find((i) => i.type?.code === want.typeCode)) ||
+        (want.typeId != null && items.find((i) => i.type?.id === want.typeId)) ||
+        defaultOf(items)
+    );
+}
 
-                {showSpinner && (
-                    <div className="absolute inset-0 z-10 flex items-center justify-center">
-                        <div className="flex flex-col items-center gap-3">
-                            <span className="loader"></span>
-                            <span className="text-xs font-medium text-gray-500 animate-pulse">Loading...</span>
+function pickBody(bodies, want) {
+    if (!bodies || bodies.length === 0) return null;
+    if (!want) return defaultOf(bodies);
+    return (
+        byId(bodies, want.id) ||
+        (want.typeCode && bodies.find((b) => b.body_type?.code === want.typeCode)) ||
+        (want.typeId != null && bodies.find((b) => b.body_type?.id === want.typeId)) ||
+        defaultOf(bodies)
+    );
+}
+
+function pickLapel(lapels, want) {
+    if (!lapels || lapels.length === 0) return null;
+
+    const defaultIn = (group) =>
+        group.find((l) => l.is_default) ||
+        group.find((l) => l.subcategory?.is_default) ||
+        group[0];
+
+    const defaultCategoryId =
+        (lapels.find((l) => l.is_default) || lapels.find((l) => l.category?.is_default))?.category?.id;
+
+    if (!want) {
+        const group = defaultCategoryId != null ? lapels.filter((l) => l.category?.id === defaultCategoryId) : lapels;
+        return defaultIn(group.length ? group : lapels);
+    }
+
+    const exact = byId(lapels, want.id);
+    if (exact) return exact;
+
+    const withWidth = (group) =>
+        (want.subcategoryId != null && group.find((l) => l.subcategory?.id === want.subcategoryId)) || defaultIn(group);
+
+    // 1. Same category: exact width, else that category's default width.
+    const sameCategory = want.categoryId != null ? lapels.filter((l) => l.category?.id === want.categoryId) : [];
+    if (sameCategory.length) return withWidth(sameCategory);
+
+    // 2. Category is missing on this body: default category, keeping the width if it exists.
+    const defaultCategory = defaultCategoryId != null ? lapels.filter((l) => l.category?.id === defaultCategoryId) : [];
+    if (defaultCategory.length) return withWidth(defaultCategory);
+
+    // 3. Anything marked default, else the first lapel.
+    return withWidth(lapels);
+}
+
+function pickButton(buttons, want) {
+    if (!buttons || buttons.length === 0 || !want) return null;
+    return (
+        byId(buttons, want.id) ||
+        (want.imageId != null && buttons.find((b) => b.button_image?.id === want.imageId)) ||
+        null // the "Default" tile means no button overlay
+    );
+}
+
+function pickCustomLining(linings, want) {
+    if (!linings || linings.length === 0 || want?.mode !== "custom") return null;
+    return (
+        byId(linings, want.id) ||
+        (want.fabricId != null &&
+            want.typeId != null &&
+            linings.find((l) => l.fabric?.id === want.fabricId && l.type?.id === want.typeId)) ||
+        (want.fabricId != null && linings.find((l) => l.fabric?.id === want.fabricId)) ||
+        defaultOf(linings)
+    );
+}
+
+function resolveSelection(fabric, intent) {
+    const body = pickBody(fabric.bodies, intent.body);
+    const customLining = pickCustomLining(fabric.custom_linings, intent.lining);
+    return {
+        fabric,
+        body,
+        lapel: body ? pickLapel(body.lapels, intent.lapel) : null,
+        sleeve: pickTyped(fabric.sleeves, intent.sleeve),
+        sidePocket: pickTyped(fabric.side_pockets, intent.sidePocket),
+        chestPocket: pickTyped(fabric.chest_pockets, intent.chestPocket),
+        button: body ? pickButton(body.body_type?.body_buttons, intent.button) : null,
+        liningMode: customLining ? "custom" : "default",
+        customLining,
+    };
+}
+
+/* Intent fragments built from concrete records (used when the user clicks). */
+const bodyIntent = (b) => (b ? { id: b.id, typeCode: b.body_type?.code ?? null, typeId: b.body_type?.id ?? null, name: b.body_type?.name ?? null } : null);
+const typedIntent = (i) => (i ? { id: i.id, typeCode: i.type?.code ?? null, typeId: i.type?.id ?? null, name: i.type?.name ?? null } : null);
+const lapelIntent = (l) =>
+    l
+        ? {
+              id: l.id,
+              categoryId: l.category?.id ?? null,
+              categoryName: l.category?.name ?? null,
+              subcategoryId: l.subcategory?.id ?? null,
+              subcategoryName: l.subcategory?.name ?? null,
+          }
+        : null;
+const buttonIntent = (b) => (b ? { id: b.id, imageId: b.button_image?.id ?? null, name: b.button_image?.name ?? null } : null);
+const liningIntent = (l) =>
+    l
+        ? { mode: "custom", id: l.id, fabricId: l.fabric?.id ?? null, typeId: l.type?.id ?? null, name: l.fabric?.name ?? null }
+        : { mode: "default", id: null, fabricId: null, typeId: null, name: null };
+
+/* Fill only the parts of the intent the user hasn't chosen yet, from what was resolved. */
+function completeIntent(intent, sel) {
+    return {
+        body: intent.body ?? bodyIntent(sel.body),
+        lapel: intent.lapel ?? lapelIntent(sel.lapel),
+        sleeve: intent.sleeve ?? typedIntent(sel.sleeve),
+        sidePocket: intent.sidePocket ?? typedIntent(sel.sidePocket),
+        chestPocket: intent.chestPocket ?? typedIntent(sel.chestPocket),
+        button: intent.button,
+        lining: intent.lining,
+    };
+}
+
+/* Human-readable list of where the new fabric couldn't honour the intent. */
+function describeAdjustments(intent, sel) {
+    const notes = [];
+    const arrow = (from, to) => `${from} → ${to}`;
+
+    if (intent.body?.typeCode && sel.body && sel.body.body_type?.code !== intent.body.typeCode) {
+        notes.push(arrow(`${intent.body.name ?? "Body"} body`, sel.body.body_type?.name ?? "default"));
+    }
+    if (intent.lapel && sel.lapel) {
+        if (intent.lapel.categoryId != null && sel.lapel.category?.id !== intent.lapel.categoryId) {
+            notes.push(arrow(`${intent.lapel.categoryName ?? "Lapel"} lapel`, sel.lapel.category?.name ?? "default"));
+        } else if (intent.lapel.subcategoryId != null && sel.lapel.subcategory?.id !== intent.lapel.subcategoryId) {
+            notes.push(arrow(`${intent.lapel.subcategoryName ?? "Lapel"} width`, sel.lapel.subcategory?.name ?? "default"));
+        }
+    }
+    const typed = (want, got, label) => {
+        if (want?.typeCode && got && got.type?.code !== want.typeCode) {
+            notes.push(arrow(`${want.name ?? label} ${label.toLowerCase()}`, got.type?.name ?? "default"));
+        }
+    };
+    typed(intent.sleeve, sel.sleeve, "Sleeves");
+    typed(intent.sidePocket, sel.sidePocket, "Side pockets");
+    typed(intent.chestPocket, sel.chestPocket, "Chest pocket");
+
+    if (intent.button?.imageId != null && sel.body && sel.button?.button_image?.id !== intent.button.imageId) {
+        notes.push(arrow(`${intent.button.name ?? "Selected"} buttons`, sel.button?.button_image?.name ?? "Default"));
+    }
+    if (intent.lining.mode === "custom") {
+        if (!sel.customLining) notes.push(arrow(`${intent.lining.name ?? "Custom"} lining`, "Default"));
+        else if (intent.lining.fabricId != null && sel.customLining.fabric?.id !== intent.lining.fabricId) {
+            notes.push(arrow(`${intent.lining.name ?? "Custom"} lining`, sel.customLining.fabric?.name ?? "default"));
+        }
+    }
+    return notes;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Layers                                                             */
+/* ------------------------------------------------------------------ */
+function layersFrom(sel) {
+    if (!sel) return [];
+    const layers = [];
+
+    const defaultLining = sel.body?.default_linings?.[0];
+    if (defaultLining) {
+        layers.push({ type: "defaultLining", image: defaultLining.image, z: defaultLining.layer_index || 0 });
+    }
+    if (sel.customLining) layers.push({ type: "lining", image: sel.customLining.image, z: sel.customLining.layer_index || 100 });
+    if (sel.body) layers.push({ type: "body", image: sel.body.image, z: sel.body.layer_index || 100 });
+    if (sel.sleeve) layers.push({ type: "sleeve", image: sel.sleeve.image, z: sel.sleeve.layer_index || 150 });
+    if (sel.lapel) layers.push({ type: "lapel", image: sel.lapel.image, z: sel.lapel.layer_index || 150 });
+    if (sel.sidePocket) layers.push({ type: "sidePocket", image: sel.sidePocket.image, z: sel.sidePocket.layer_index || 100 });
+    if (sel.chestPocket) layers.push({ type: "chestPocket", image: sel.chestPocket.image, z: sel.chestPocket.layer_index || 100 });
+    if (sel.button) layers.push({ type: "button", image: sel.button.image, z: sel.button.layer_index || 160 });
+
+    return layers.filter((l) => l.image).sort((a, b) => a.z - b.z);
+}
+
+const layerUrls = (sel) => layersFrom(sel).map((l) => l.image);
+
+/* Every render image an option on this fabric could put on the canvas. */
+function optionUrlsFor(sel) {
+    const f = sel.fabric;
+    const urls = [];
+    (f.bodies || []).forEach((b) => urls.push(b.image, b.default_linings?.[0]?.image));
+    (sel.body?.lapels || []).forEach((l) => urls.push(l.image));
+    (f.sleeves || []).forEach((s) => urls.push(s.image));
+    (f.side_pockets || []).forEach((p) => urls.push(p.image));
+    (f.chest_pockets || []).forEach((p) => urls.push(p.image));
+    (sel.body?.body_type?.body_buttons || []).forEach((b) => urls.push(b.image));
+    (f.custom_linings || []).forEach((l) => urls.push(l.image));
+    return urls;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Persistence                                                        */
+/* ------------------------------------------------------------------ */
+function loadSavedDesign() {
+    try {
+        const raw = window.localStorage.getItem(STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object" || !parsed.intent) return null;
+        return { fabricId: parsed.fabricId ?? null, intent: { ...EMPTY_INTENT, ...parsed.intent } };
+    } catch {
+        return null;
+    }
+}
+
+function saveDesign(fabricId, intent) {
+    try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ fabricId, intent }));
+    } catch { /* storage unavailable */ }
+}
+
+function clearSavedDesign() {
+    try { window.localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Presentational components (module scope so they keep identity)     */
+/* ------------------------------------------------------------------ */
+const LazyImage = ({ src, alt, className, style, fallback = null }) => {
+    const [failed, setFailed] = useState(false);
+    useEffect(() => setFailed(false), [src]);
+    if (!src || failed) return fallback;
+    return (
+        <img
+            src={src}
+            alt={alt || ""}
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            className={className}
+            style={style}
+            onError={() => setFailed(true)}
+        />
+    );
+};
+
+const SelectedBadge = () => (
+    <div className="absolute z-20 flex items-center justify-center w-5 h-5 text-xs text-white duration-200 bg-gray-900 rounded-full top-2 right-2 animate-in fade-in zoom-in">
+        ✓
+    </div>
+);
+
+const TileSpinner = () => (
+    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/60 backdrop-blur-[1px]">
+        <Loader2 className="w-5 h-5 text-gray-900 animate-spin" />
+    </div>
+);
+
+const FabricOptionTile = memo(function FabricOptionTile({ isSelected, onClick, onHover, image, label, price, isLoading }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            onMouseEnter={onHover}
+            onFocus={onHover}
+            className={`relative p-3 rounded-lg transition-all duration-300 ease-out ${
+                isSelected ? "shadow-md scale-[1.02]" : "hover:shadow-md hover:scale-[1.02]"
+            }`}
+        >
+            {isSelected && <SelectedBadge />}
+            {isLoading && <TileSpinner />}
+            <div className="w-full aspect-[4/3] flex items-center justify-center bg-transparent rounded-md overflow-hidden">
+                <LazyImage
+                    src={image}
+                    alt={label}
+                    className="object-contain w-full h-full"
+                    fallback={<div className="flex items-center justify-center w-full h-full text-xs text-gray-400">{label || "No image"}</div>}
+                />
+            </div>
+            <div className="mt-2">
+                <div className="text-xs font-medium leading-tight text-center text-gray-700">{label}</div>
+                {price && <div className="text-xs text-center text-gray-500 mt-0.5">${price}</div>}
+            </div>
+        </button>
+    );
+});
+
+const StyleOptionTile = memo(function StyleOptionTile({ isSelected, onClick, onHover, image, label, aspect = "aspect-[3/4]", isLoading }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            onMouseEnter={onHover}
+            onFocus={onHover}
+            className={`relative p-3 rounded-lg transition-all duration-300 ease-out ${
+                isSelected ? "bg-transparent scale-[1.03]" : "hover:scale-[1.03]"
+            }`}
+        >
+            {isSelected && <SelectedBadge />}
+            {isLoading && <TileSpinner />}
+            <div className={`w-full ${aspect} flex items-center justify-center bg-transparent rounded-md overflow-hidden`}>
+                <LazyImage
+                    src={image}
+                    alt={label}
+                    className="object-contain w-full h-full p-2"
+                    style={{ mixBlendMode: "multiply" }}
+                    fallback={<div className="flex items-center justify-center w-full h-full p-2 text-xs text-center text-gray-400">{label}</div>}
+                />
+            </div>
+            <div className="mt-2">
+                <div className="text-xs font-medium leading-tight text-center text-gray-700">{label}</div>
+            </div>
+        </button>
+    );
+});
+
+const LiningOptionTile = memo(function LiningOptionTile({ isSelected, onClick, image, label, isLoading }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className={`relative p-3 rounded-lg transition-all duration-300 ease-out ${isSelected ? "scale-[1.02]" : "hover:scale-[1.02]"}`}
+        >
+            {isSelected && <SelectedBadge />}
+            {isLoading && <TileSpinner />}
+            <div className="w-full aspect-[4/3] flex items-center justify-center bg-transparent rounded-md overflow-hidden">
+                <LazyImage
+                    src={image}
+                    alt={label}
+                    className="object-contain w-full h-full p-2"
+                    style={{ mixBlendMode: "multiply" }}
+                    fallback={<div className="flex items-center justify-center w-full h-full text-xs text-gray-400">{label}</div>}
+                />
+            </div>
+            <div className="mt-2">
+                <div className="text-xs font-medium leading-tight text-center text-gray-700">{label}</div>
+            </div>
+        </button>
+    );
+});
+
+const ButtonOptionTile = memo(function ButtonOptionTile({ isSelected, onClick, onHover, image, label, isLoading, isDefault = false }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            onMouseEnter={onHover}
+            onFocus={onHover}
+            className={`relative p-3 rounded-lg transition-all duration-300 ease-out ${isSelected ? "scale-[1.02]" : "hover:scale-[1.02]"}`}
+        >
+            {isSelected && <SelectedBadge />}
+            {isLoading && <TileSpinner />}
+            <div className="flex items-center justify-center w-full overflow-hidden rounded-md aspect-square">
+                {isDefault ? (
+                    <div className="flex flex-col items-center justify-center w-full h-full p-2">
+                        <div className="flex items-center justify-center w-12 h-12 mb-1 border-4 border-gray-900 rounded-full">
+                            <span className="text-xs text-gray-400">−</span>
                         </div>
                     </div>
+                ) : (
+                    <LazyImage
+                        src={image}
+                        alt={label}
+                        className="object-contain w-full h-full p-2"
+                        style={{ mixBlendMode: "multiply" }}
+                        fallback={<div className="flex items-center justify-center w-full h-full text-xs text-gray-400">{label}</div>}
+                    />
                 )}
             </div>
-        </div>
+            <div className="mt-2">
+                <div className="text-xs font-medium leading-tight text-center text-gray-700">{label}</div>
+            </div>
+        </button>
     );
+});
+
+const SectionHeader = ({ title }) => (
+    <div className="px-5 pt-6 pb-3">
+        <span className="text-xs font-bold tracking-wider text-gray-400 uppercase">{title}</span>
+    </div>
+);
+
+const RailTab = ({ id, icon: Icon, label, isActive, onSelect }) => (
+    <button
+        type="button"
+        onClick={() => onSelect(id)}
+        className="flex flex-col items-center gap-1.5 py-3 group w-full transition-transform duration-200 hover:scale-105"
+    >
+        <div
+            className={`flex items-center justify-center w-11 h-11 rounded-full border-2 transition-all duration-300 ${
+                isActive
+                    ? "bg-gray-900 border-gray-900 text-white shadow-md scale-110"
+                    : "bg-white border-gray-200 text-gray-400 group-hover:border-gray-400 group-hover:text-gray-600"
+            }`}
+        >
+            <Icon className="w-5 h-5" />
+        </div>
+        <span className={`text-[11px] font-semibold tracking-wide uppercase transition-colors duration-300 ${isActive ? "text-gray-900" : "text-gray-400"}`}>
+            {label}
+        </span>
+    </button>
+);
+
+/*
+ * Canvas layers are keyed by *type*, not record id, so a fabric or option
+ * change swaps the `src` of an existing <img> instead of remounting it.
+ * Every src reaching here has already been loaded + decoded by the cache,
+ * so the swap paints in the same frame — no spinner, no half-drawn suit.
+ */
+const CanvasLayer = memo(function CanvasLayer({ layer }) {
+    return (
+        <img
+            src={layer.image}
+            alt=""
+            aria-hidden="true"
+            draggable={false}
+            decoding="sync"
+            className="absolute inset-0 object-contain w-full h-full pointer-events-none select-none"
+            style={{ zIndex: layer.z }}
+            onError={(e) => {
+                console.error(`Failed to render ${layer.type}:`, layer.image);
+                e.currentTarget.style.visibility = "hidden";
+            }}
+        />
+    );
+});
+
+const PENDING_LABELS = {
+    fabric: "Changing fabric",
+    body: "Updating body",
+    lapelCategory: "Updating lapel",
+    lapel: "Updating lapel",
+    sleeve: "Updating sleeves",
+    sidePocket: "Updating pockets",
+    chestPocket: "Updating pocket",
+    button: "Updating buttons",
+    lining: "Updating lining",
+    reset: "Resetting design",
 };
 
 /* ------------------------------------------------------------------ */
-/*  Enhanced Selection Hook with loading state                         */
+/*  Suit designer                                                      */
 /* ------------------------------------------------------------------ */
-const useSelectionWithLoading = (initialValue = null) => {
-    const [selected, setSelected] = useState(initialValue);
-    const [pendingSelection, setPendingSelection] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const previousSelectionRef = useRef(initialValue);
-
-    const selectWithLoading = useCallback(async (newSelection, loadImageFn) => {
-        if (!newSelection) {
-            previousSelectionRef.current = selected;
-            setSelected(newSelection);
-            return;
-        }
-
-        const imageUrl = loadImageFn ? loadImageFn(newSelection) : newSelection.image;
-
-        if (imageUrl && smartImageCache.isImageCached(imageUrl)) {
-            previousSelectionRef.current = selected;
-            setSelected(newSelection);
-            return;
-        }
-
-        setIsLoading(true);
-        setPendingSelection(newSelection);
-
-        try {
-            if (imageUrl) {
-                await smartImageCache.preloadImage(imageUrl);
-            }
-
-            previousSelectionRef.current = selected;
-            setSelected(newSelection);
-            setPendingSelection(null);
-            setIsLoading(false);
-        } catch (error) {
-            console.error('Failed to load selection:', error);
-            setPendingSelection(null);
-            setIsLoading(false);
-        }
-    }, [selected]);
-
-    return {
-        selected,
-        pendingSelection,
-        isLoading,
-        previousSelection: previousSelectionRef.current,
-        selectWithLoading,
-        setSelected
-    };
-};
-
 const SuitDesigner = () => {
-    const [suitData, setSuitData] = useState(null);
+    const [fabrics, setFabrics] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [activeLoads, setActiveLoads] = useState(0);
-    const [isViewReady, setIsViewReady] = useState(false);
-    const viewLoadTimeoutRef = useRef(null);
-    const [currentLayerUrls, setCurrentLayerUrls] = useState([]);
 
-    const {
-        selected: selectedFabric,
-        pendingSelection: pendingFabric,
-        isLoading: isFabricLoading,
-        selectWithLoading: selectFabricWithLoading,
-        setSelected: setSelectedFabric
-    } = useSelectionWithLoading(null);
+    // The committed, fully-cached selection currently on the canvas.
+    const [selection, setSelection] = useState(null);
+    // { kind, id } while a change is being prepared (images loading).
+    const [pending, setPending] = useState(null);
+    const [notice, setNotice] = useState(null);
 
-    const {
-        selected: selectedBody,
-        pendingSelection: pendingBody,
-        isLoading: isBodyLoading,
-        selectWithLoading: selectBodyWithLoading,
-        setSelected: setSelectedBody
-    } = useSelectionWithLoading(null);
-
-    const {
-        selected: selectedSleeve,
-        pendingSelection: pendingSleeve,
-        isLoading: isSleeveLoading,
-        selectWithLoading: selectSleeveWithLoading,
-        setSelected: setSelectedSleeve
-    } = useSelectionWithLoading(null);
-
-    const {
-        selected: selectedLapelCategory,
-        pendingSelection: pendingLapelCategory,
-        isLoading: isLapelCategoryLoading,
-        selectWithLoading: selectLapelCategoryWithLoading,
-        setSelected: setSelectedLapelCategory
-    } = useSelectionWithLoading(null);
-
-    const {
-        selected: selectedLapel,
-        pendingSelection: pendingLapel,
-        isLoading: isLapelLoading,
-        selectWithLoading: selectLapelWithLoading,
-        setSelected: setSelectedLapel
-    } = useSelectionWithLoading(null);
-
-    const {
-        selected: selectedSidePocket,
-        pendingSelection: pendingSidePocket,
-        isLoading: isSidePocketLoading,
-        selectWithLoading: selectSidePocketWithLoading,
-        setSelected: setSelectedSidePocket
-    } = useSelectionWithLoading(null);
-
-    const {
-        selected: selectedChestPocket,
-        pendingSelection: pendingChestPocket,
-        isLoading: isChestPocketLoading,
-        selectWithLoading: selectChestPocketWithLoading,
-        setSelected: setSelectedChestPocket
-    } = useSelectionWithLoading(null);
-
-    const {
-        selected: selectedLining,
-        pendingSelection: pendingLining,
-        isLoading: isLiningLoading,
-        selectWithLoading: selectLiningWithLoading,
-        setSelected: setSelectedLining
-    } = useSelectionWithLoading(null);
-
-    const {
-        selected: selectedButton,
-        pendingSelection: pendingButton,
-        isLoading: isButtonLoading,
-        selectWithLoading: selectButtonWithLoading,
-        setSelected: setSelectedButton
-    } = useSelectionWithLoading(null);
-
-    const [liningMode, setLiningMode] = useState("default");
-    const [showLiningSidebar, setShowLiningSidebar] = useState(false);
     const [activeTab, setActiveTab] = useState("fabric");
+    const [showLiningModal, setShowLiningModal] = useState(false);
 
-    // Store per-fabric exact selections (IDs)
-    const [fabricConfigs, setFabricConfigs] = useState({});
+    const intentRef = useRef(EMPTY_INTENT);
+    const targetFabricRef = useRef(null);
+    const commitTokenRef = useRef(0);
+    const noticeTimerRef = useRef(null);
 
-    useEffect(() => {
-        fetchSuitData();
+    /* ---------- commit: prepare images, then swap the whole view at once ---------- */
+    const commit = useCallback(async (next, pendingInfo, { adjustments = [] } = {}) => {
+        const token = ++commitTokenRef.current;
+        const urls = layerUrls(next);
+
+        if (!imageCache.allSettled(urls)) {
+            setPending(pendingInfo);
+            await Promise.race([
+                imageCache.loadAll(urls),
+                new Promise((resolve) => setTimeout(resolve, CANVAS_TIMEOUT_MS)),
+            ]);
+        }
+
+        if (token !== commitTokenRef.current) return; // superseded by a newer change
+
+        intentRef.current = completeIntent(intentRef.current, next);
+        saveDesign(next.fabric.id, intentRef.current);
+
+        setSelection(next);
+        setPending(null);
+
+        if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+        if (adjustments.length > 0) {
+            setNotice({ fabric: next.fabric.name, items: adjustments });
+            noticeTimerRef.current = setTimeout(() => setNotice(null), 4500);
+        } else {
+            setNotice(null);
+        }
     }, []);
 
-    const fetchSuitData = async () => {
+    /* ---------- initial fetch ---------- */
+    const fetchSuitData = useCallback(async () => {
         try {
             setLoading(true);
-            const response = await fetch("/api/configurator");
+            setError(null);
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+            const response = await fetch("/api/configurator", { headers: { Accept: "application/json" } });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+            const payload = await response.json();
+            const list = payload?.success ? payload.data || [] : [];
+            setFabrics(list);
+
+            if (list.length > 0) {
+                const saved = loadSavedDesign();
+                const fabric =
+                    (saved?.fabricId != null && list.find((f) => f.id === saved.fabricId)) ||
+                    list.find((f) => f.is_default) ||
+                    list[0];
+
+                intentRef.current = saved?.intent || EMPTY_INTENT;
+                targetFabricRef.current = fabric;
+                await commit(resolveSelection(fabric, intentRef.current), { kind: "initial" });
             }
-
-            const data = await response.json();
-            setSuitData(data);
-
-            if (data.success && data.data && data.data.length > 0) {
-                const defaultFabric = data.data.find(f => f.is_default) || data.data[0];
-                setSelectedFabric(defaultFabric);
-                initializeFabricDefaults(defaultFabric, null);
-            }
-
-            setLoading(false);
         } catch (err) {
             console.error("Error fetching suit data:", err);
             setError(err.message);
+        } finally {
             setLoading(false);
         }
-    };
+    }, [commit]);
 
-    // ---------- PERSISTENCE HELPERS ----------
-    const findMatchingOrFallback = useCallback((items, targetId, fallbackToDefault = true) => {
-        if (!items || items.length === 0) return null;
+    useEffect(() => {
+        fetchSuitData();
+    }, [fetchSuitData]);
 
-        if (targetId) {
-            const match = items.find(item => item.id === targetId);
-            if (match) return match;
-        }
+    /* ---------- background warm-up after every commit ---------- */
+    useEffect(() => {
+        if (!selection || !fabrics) return;
 
-        if (fallbackToDefault) {
-            const defaultItem = items.find(item => item.is_default === true);
-            if (defaultItem) return defaultItem;
-        }
-
-        return items[0];
-    }, []);
-
-    const findMatchingLapelCategory = useCallback((lapels, targetCategoryId) => {
-        if (!lapels || lapels.length === 0) return null;
-
-        if (targetCategoryId) {
-            const match = lapels.find(l => l.category?.id === targetCategoryId);
-            if (match) return match.category;
-        }
-
-        const defaultLapel = lapels.find(l => l.category?.is_default === true) || lapels[0];
-        return defaultLapel?.category || null;
-    }, []);
-
-    const findMatchingLapel = useCallback((lapels, targetCategoryId, targetLapelId) => {
-        if (!lapels || lapels.length === 0) return null;
-
-        if (targetLapelId) {
-            const match = lapels.find(l => l.id === targetLapelId);
-            if (match) return match;
-        }
-
-        if (targetCategoryId) {
-            const categoryLapels = lapels.filter(l => l.category?.id === targetCategoryId);
-            if (categoryLapels.length > 0) {
-                const defaultSub = categoryLapels.find(l => l.subcategory?.is_default === true || l.is_default === true) || categoryLapels[0];
-                return defaultSub;
-            }
-        }
-
-        const defaultLapel = lapels.find(l => l.subcategory?.is_default === true || l.is_default === true) || lapels[0];
-        return defaultLapel;
-    }, []);
-
-    const findMatchingButton = useCallback((buttons, targetButtonId) => {
-        if (!buttons || buttons.length === 0) return null;
-
-        if (targetButtonId) {
-            const match = buttons.find(b => b.id === targetButtonId);
-            if (match) return match;
-        }
-
-        return null;
-    }, []);
-
-    // Semantic matching helpers
-    const findBodyByCode = useCallback((bodies, code) => {
-        if (!bodies || bodies.length === 0) return null;
-        return bodies.find(b => b.body_type?.code === code) || bodies.find(b => b.is_default) || bodies[0];
-    }, []);
-
-    const findSleeveByCode = useCallback((sleeves, code) => {
-        if (!sleeves || sleeves.length === 0) return null;
-        return sleeves.find(s => s.type?.code === code) || sleeves.find(s => s.is_default) || sleeves[0];
-    }, []);
-
-    const findSidePocketByCode = useCallback((pockets, code) => {
-        if (!pockets || pockets.length === 0) return null;
-        return pockets.find(p => p.type?.code === code) || pockets.find(p => p.is_default) || pockets[0];
-    }, []);
-
-    const findChestPocketByCode = useCallback((pockets, code) => {
-        if (!pockets || pockets.length === 0) return null;
-        return pockets.find(p => p.type?.code === code) || pockets.find(p => p.is_default) || pockets[0];
-    }, []);
-
-    const findLapelCategoryById = useCallback((lapels, categoryId) => {
-        if (!lapels || lapels.length === 0) return null;
-        const match = lapels.find(l => l.category?.id === categoryId);
-        if (match) return match.category;
-        const defaultLapel = lapels.find(l => l.category?.is_default === true) || lapels[0];
-        return defaultLapel?.category || null;
-    }, []);
-
-    const findLapelByCategoryAndSubcategory = useCallback((lapels, categoryId, subcategoryId) => {
-        if (!lapels || lapels.length === 0) return null;
-        if (categoryId && subcategoryId) {
-            const match = lapels.find(l => l.category?.id === categoryId && l.subcategory?.id === subcategoryId);
-            if (match) return match;
-        }
-        if (categoryId) {
-            const categoryLapels = lapels.filter(l => l.category?.id === categoryId);
-            if (categoryLapels.length > 0) {
-                return categoryLapels.find(l => l.subcategory?.is_default === true || l.is_default === true) || categoryLapels[0];
-            }
-        }
-        return lapels.find(l => l.subcategory?.is_default === true || l.is_default === true) || lapels[0];
-    }, []);
-
-    const findButtonByImageId = useCallback((buttons, imageId) => {
-        if (!buttons || buttons.length === 0) return null;
-        return buttons.find(b => b.button_image?.id === imageId) || null;
-    }, []);
-
-    const saveCurrentConfig = useCallback((fabricId) => {
-        const config = {
-            bodyId: selectedBody?.id || null,
-            sleeveId: selectedSleeve?.id || null,
-            lapelCategoryId: selectedLapelCategory?.id || null,
-            lapelId: selectedLapel?.id || null,
-            sidePocketId: selectedSidePocket?.id || null,
-            chestPocketId: selectedChestPocket?.id || null,
-            buttonId: selectedButton?.id || null,
-        };
-        setFabricConfigs(prev => ({
-            ...prev,
-            [fabricId]: config,
-        }));
-    }, [selectedBody, selectedSleeve, selectedLapelCategory, selectedLapel, selectedSidePocket, selectedChestPocket, selectedButton]);
-
-    const applyExactConfig = useCallback((fabric, config) => {
-        const newBody = findMatchingOrFallback(fabric.bodies, config.bodyId, true);
-        if (newBody) {
-            setSelectedBody(newBody);
-
-            const newLapelCategory = findMatchingLapelCategory(newBody.lapels, config.lapelCategoryId);
-            if (newLapelCategory) {
-                setSelectedLapelCategory(newLapelCategory);
-                const newLapel = findMatchingLapel(newBody.lapels, newLapelCategory.id, config.lapelId);
-                if (newLapel) {
-                    setSelectedLapel(newLapel);
-                } else {
-                    setSelectedLapel(null);
-                }
-            } else {
-                setSelectedLapelCategory(null);
-                setSelectedLapel(null);
-            }
-        } else {
-            setSelectedBody(null);
-            setSelectedLapelCategory(null);
-            setSelectedLapel(null);
-        }
-
-        const newSleeve = findMatchingOrFallback(fabric.sleeves, config.sleeveId, true);
-        setSelectedSleeve(newSleeve);
-
-        const newSidePocket = findMatchingOrFallback(fabric.side_pockets, config.sidePocketId, true);
-        setSelectedSidePocket(newSidePocket);
-
-        const newChestPocket = findMatchingOrFallback(fabric.chest_pockets, config.chestPocketId, true);
-        setSelectedChestPocket(newChestPocket);
-
-        if (newBody?.body_type?.body_buttons) {
-            const newButton = findMatchingButton(newBody.body_type.body_buttons, config.buttonId);
-            setSelectedButton(newButton);
-        } else {
-            setSelectedButton(null);
-        }
-    }, [findMatchingOrFallback, findMatchingLapelCategory, findMatchingLapel, findMatchingButton]);
-
-    const applySemanticConfig = useCallback((fabric, semanticConfig) => {
-        const newBody = findBodyByCode(fabric.bodies, semanticConfig.body_type_code);
-        if (newBody) {
-            setSelectedBody(newBody);
-
-            const newLapelCategory = findLapelCategoryById(newBody.lapels, semanticConfig.lapel_category_id);
-            if (newLapelCategory) {
-                setSelectedLapelCategory(newLapelCategory);
-                const newLapel = findLapelByCategoryAndSubcategory(newBody.lapels, newLapelCategory.id, semanticConfig.lapel_subcategory_id);
-                setSelectedLapel(newLapel);
-            } else {
-                setSelectedLapelCategory(null);
-                setSelectedLapel(null);
-            }
-        } else {
-            setSelectedBody(null);
-            setSelectedLapelCategory(null);
-            setSelectedLapel(null);
-        }
-
-        const newSleeve = findSleeveByCode(fabric.sleeves, semanticConfig.sleeve_type_code);
-        setSelectedSleeve(newSleeve);
-
-        const newSidePocket = findSidePocketByCode(fabric.side_pockets, semanticConfig.side_pocket_type_code);
-        setSelectedSidePocket(newSidePocket);
-
-        const newChestPocket = findChestPocketByCode(fabric.chest_pockets, semanticConfig.chest_pocket_type_code);
-        setSelectedChestPocket(newChestPocket);
-
-        if (newBody?.body_type?.body_buttons) {
-            const newButton = findButtonByImageId(newBody.body_type.body_buttons, semanticConfig.button_image_id);
-            setSelectedButton(newButton);
-        } else {
-            setSelectedButton(null);
-        }
-    }, [findBodyByCode, findSleeveByCode, findSidePocketByCode, findChestPocketByCode, findLapelCategoryById, findLapelByCategoryAndSubcategory, findButtonByImageId]);
-
-    // ---------- FABRIC CHANGE ----------
-    const handleFabricChange = async (fabric) => {
-        if (!fabric) return;
-
-        // Save current fabric's exact config before switching
-        if (selectedFabric?.id) {
-            saveCurrentConfig(selectedFabric.id);
-        }
-
-        // Capture the semantic configuration from the CURRENT selections (before they change)
-        const currentSemanticConfig = {
-            body_type_code: selectedBody?.body_type?.code || null,
-            sleeve_type_code: selectedSleeve?.type?.code || null,
-            side_pocket_type_code: selectedSidePocket?.type?.code || null,
-            chest_pocket_type_code: selectedChestPocket?.type?.code || null,
-            lapel_category_id: selectedLapelCategory?.id || null,
-            lapel_subcategory_id: selectedLapel?.subcategory?.id || null,
-            button_image_id: selectedButton?.button_image?.id || null,
-        };
-
-        // Set the new fabric
-        setSelectedFabric(fabric);
-
-        // Reset lining
-        setSelectedLining(null);
-        setLiningMode("default");
-        setShowLiningSidebar(false);
-
-        // Check if we already have an exact config for this fabric
-        const savedConfig = fabricConfigs[fabric.id];
-        if (savedConfig) {
-            applyExactConfig(fabric, savedConfig);
-        } else {
-            // Use the semantic config to find matching components in the new fabric
-            applySemanticConfig(fabric, currentSemanticConfig);
-        }
-    };
-
-    // ---------- COMPONENT CHANGE HANDLERS ----------
-    const handleBodyChange = async (body) => {
-        await selectBodyWithLoading(body, (b) => b.image || b.body_type?.diagram);
-
-        setSelectedButton(null);
-
-        if (body.lapels && body.lapels.length > 0) {
-            const defaultLapel = body.lapels.find((l) =>
-                l.subcategory?.is_default === true || l.is_default === true
-            ) || body.lapels.find((l) =>
-                l.category?.is_default === true
-            ) || body.lapels[0];
-
-            await selectLapelWithLoading(defaultLapel, (l) => l.image);
-            await selectLapelCategoryWithLoading(defaultLapel.category, (c) => c?.diagram);
-        } else {
-            setSelectedLapelCategory(null);
-            setSelectedLapel(null);
-        }
-    };
-
-    const handleLapelCategoryChange = async (category) => {
-        await selectLapelCategoryWithLoading(category, (c) => c?.diagram);
-
-        const categoryLapels = selectedBody?.lapels?.filter((l) => l.category?.id === category.id);
-        if (categoryLapels && categoryLapels.length > 0) {
-            const defaultSub = categoryLapels.find((l) =>
-                l.subcategory?.is_default === true || l.is_default === true
-            ) || categoryLapels[0];
-
-            await selectLapelWithLoading(defaultSub, (l) => l.subcategory?.diagram || l.image);
-        }
-    };
-
-    const handleLapelSelect = async (lapel) => {
-        await selectLapelWithLoading(lapel, (l) => l.subcategory?.diagram || l.image);
-    };
-
-    const handleSleeveSelect = async (sleeve) => {
-        await selectSleeveWithLoading(sleeve, (s) => s.type?.diagram || s.image);
-    };
-
-    const handleSidePocketSelect = async (pocket) => {
-        await selectSidePocketWithLoading(pocket, (p) => p.type?.diagram || p.image);
-    };
-
-    const handleChestPocketSelect = async (pocket) => {
-        await selectChestPocketWithLoading(pocket, (p) => p.type?.diagram || p.image);
-    };
-
-    const handleButtonSelect = async (button) => {
-        await selectButtonWithLoading(button, (b) => b.button_image?.diagram || b.image);
-    };
-
-    const handleDefaultButtonClick = () => {
-        setSelectedButton(null);
-    };
-
-    const handleTabChange = (tabId) => {
-        setActiveTab(tabId);
-    };
-
-    const getLapelCategories = (lapels) => {
-        if (!lapels || lapels.length === 0) return [];
-        const categories = {};
-        lapels.forEach((lapel) => {
-            const categoryId = lapel.category?.id;
-            if (categoryId && !categories[categoryId]) {
-                categories[categoryId] = {
-                    id: categoryId,
-                    name: lapel.category?.name,
-                    diagram: lapel.category?.diagram,
-                    is_default: lapel.category?.is_default || false,
-                    subcategories: [],
-                };
-            }
-            if (categoryId) categories[categoryId].subcategories.push(lapel);
+        const handle = runWhenIdle(() => {
+            imageCache.clearQueue();
+            // 1. Everything the user can click on this fabric -> option changes feel instant.
+            imageCache.prefetch(optionUrlsFor(selection));
+            // 2. What every other fabric would look like with this exact design -> fabric switches feel instant.
+            const intent = intentRef.current;
+            fabrics
+                .filter((f) => f.id !== selection.fabric.id)
+                .forEach((f) => imageCache.prefetch(layerUrls(resolveSelection(f, intent))));
         });
-        return Object.values(categories);
-    };
 
-    const initializeFabricDefaults = useCallback((fabric, persistedConfig) => {
-        setSelectedBody(null);
-        setSelectedSleeve(null);
-        setSelectedLapelCategory(null);
-        setSelectedLapel(null);
-        setSelectedSidePocket(null);
-        setSelectedChestPocket(null);
-        setSelectedLining(null);
-        setSelectedButton(null);
-        setLiningMode("default");
-        setShowLiningSidebar(false);
+        return () => cancelIdle(handle);
+    }, [selection, fabrics]);
 
-        const config = persistedConfig || {};
+    useEffect(() => () => noticeTimerRef.current && clearTimeout(noticeTimerRef.current), []);
 
-        if (fabric.bodies && fabric.bodies.length > 0) {
-            let defaultBody;
-            if (config.bodyId) {
-                defaultBody = fabric.bodies.find((b) => b.id === config.bodyId) || fabric.bodies.find((b) => b.is_default) || fabric.bodies[0];
-            } else {
-                defaultBody = fabric.bodies.find((b) => b.is_default) || fabric.bodies[0];
-            }
-            setSelectedBody(defaultBody);
+    /* ---------- change handlers ---------- */
+    const changeFabric = useCallback(
+        (fabric) => {
+            if (!fabric || fabric.id === targetFabricRef.current?.id) return;
+            targetFabricRef.current = fabric;
+            const next = resolveSelection(fabric, intentRef.current);
+            commit(next, { kind: "fabric", id: fabric.id }, { adjustments: describeAdjustments(intentRef.current, next) });
+        },
+        [commit]
+    );
 
-            if (defaultBody.lapels && defaultBody.lapels.length > 0) {
-                let defaultLapel;
-                if (config.lapelId) {
-                    defaultLapel = defaultBody.lapels.find((l) => l.id === config.lapelId);
-                }
-                if (!defaultLapel && config.lapelCategoryId) {
-                    defaultLapel = defaultBody.lapels.find((l) => l.category?.id === config.lapelCategoryId && l.is_default);
-                }
-                if (!defaultLapel) {
-                    defaultLapel = defaultBody.lapels.find((l) =>
-                        l.subcategory?.is_default === true || l.is_default === true
-                    ) || defaultBody.lapels.find((l) =>
-                        l.category?.is_default === true
-                    ) || defaultBody.lapels[0];
-                }
+    const choose = useCallback(
+        (kind, id, patch) => {
+            const fabric = targetFabricRef.current;
+            if (!fabric) return;
+            intentRef.current = { ...intentRef.current, ...patch };
+            commit(resolveSelection(fabric, intentRef.current), { kind, id });
+        },
+        [commit]
+    );
 
-                setSelectedLapel(defaultLapel);
-                setSelectedLapelCategory(defaultLapel?.category || null);
-            }
-        }
+    const handleBodyChange = (body) => choose("body", body.id, { body: bodyIntent(body) });
 
-        if (fabric.sleeves && fabric.sleeves.length > 0) {
-            let defaultSleeve;
-            if (config.sleeveId) {
-                defaultSleeve = fabric.sleeves.find((s) => s.id === config.sleeveId) || fabric.sleeves.find((s) => s.is_default) || fabric.sleeves[0];
-            } else {
-                defaultSleeve = fabric.sleeves.find((s) => s.is_default) || fabric.sleeves[0];
-            }
-            setSelectedSleeve(defaultSleeve);
-        }
+    const handleLapelCategoryChange = (category) =>
+        choose("lapelCategory", category.id, {
+            lapel: {
+                id: null,
+                categoryId: category.id,
+                categoryName: category.name,
+                // keep the chosen width when moving between categories
+                subcategoryId: intentRef.current.lapel?.subcategoryId ?? null,
+                subcategoryName: intentRef.current.lapel?.subcategoryName ?? null,
+            },
+        });
 
-        if (fabric.side_pockets && fabric.side_pockets.length > 0) {
-            let defaultPocket;
-            if (config.sidePocketId) {
-                defaultPocket = fabric.side_pockets.find((p) => p.id === config.sidePocketId) || fabric.side_pockets.find((p) => p.is_default) || fabric.side_pockets[0];
-            } else {
-                defaultPocket = fabric.side_pockets.find((p) => p.is_default) || fabric.side_pockets[0];
-            }
-            setSelectedSidePocket(defaultPocket);
-        }
-
-        if (fabric.chest_pockets && fabric.chest_pockets.length > 0) {
-            let defaultPocket;
-            if (config.chestPocketId) {
-                defaultPocket = fabric.chest_pockets.find((p) => p.id === config.chestPocketId) || fabric.chest_pockets.find((p) => p.is_default) || fabric.chest_pockets[0];
-            } else {
-                defaultPocket = fabric.chest_pockets.find((p) => p.is_default) || fabric.chest_pockets[0];
-            }
-            setSelectedChestPocket(defaultPocket);
-        }
-    }, []);
+    const handleLapelSelect = (lapel) => choose("lapel", lapel.id, { lapel: lapelIntent(lapel) });
+    const handleSleeveSelect = (sleeve) => choose("sleeve", sleeve.id, { sleeve: typedIntent(sleeve) });
+    const handleSidePocketSelect = (pocket) => choose("sidePocket", pocket.id, { sidePocket: typedIntent(pocket) });
+    const handleChestPocketSelect = (pocket) => choose("chestPocket", pocket.id, { chestPocket: typedIntent(pocket) });
+    const handleButtonSelect = (button) => choose("button", button.id, { button: buttonIntent(button) });
+    const handleDefaultButtonClick = () => choose("button", "default", { button: null });
 
     const handleDefaultLiningClick = () => {
-        setLiningMode("default");
-        setSelectedLining(null);
-        setShowLiningSidebar(false);
+        setShowLiningModal(false);
+        choose("lining", "default", { lining: liningIntent(null) });
     };
 
     const handleCustomLiningClick = () => {
-        setLiningMode("custom");
-        setShowLiningSidebar(true);
-
-        if (selectedFabric) {
-            const urls = new Set();
-            (selectedFabric.custom_linings || []).forEach(lining => {
-                if (lining.image) urls.add(lining.image);
-                if (lining.fabric?.image) urls.add(lining.fabric.image);
-                if (lining.type?.diagram) urls.add(lining.type.diagram);
-            });
-            smartImageCache.preloadBatch([...urls]);
-        }
+        setShowLiningModal(true);
+        const linings = targetFabricRef.current?.custom_linings || [];
+        imageCache.prefetch(linings.flatMap((l) => [l.image, l.fabric?.image]), { front: true });
     };
 
-    const handleLiningSelect = async (lining) => {
-        await selectLiningWithLoading(lining, (l) => l.fabric?.image || l.image);
-        setLiningMode("custom");
-        setShowLiningSidebar(false);
+    const handleLiningSelect = (lining) => {
+        setShowLiningModal(false);
+        choose("lining", lining.id, { lining: liningIntent(lining) });
     };
 
-    // --- LAYERS: uses only selected values (no pending) ---
-    const layers = useMemo(() => {
-        const allLayers = [];
+    const handleReset = () => {
+        if (!fabrics?.length) return;
+        clearSavedDesign();
+        intentRef.current = EMPTY_INTENT;
+        const fabric = fabrics.find((f) => f.is_default) || fabrics[0];
+        targetFabricRef.current = fabric;
+        setShowLiningModal(false);
+        commit(resolveSelection(fabric, EMPTY_INTENT), { kind: "reset" });
+    };
 
-        // Use only selected, not pending
-        const effectiveLining = selectedLining;
-        const effectiveBody = selectedBody;
-        const effectiveSleeve = selectedSleeve;
-        const effectiveLapel = selectedLapel;
-        const effectiveSidePocket = selectedSidePocket;
-        const effectiveChestPocket = selectedChestPocket;
-        const effectiveButton = selectedButton;
+    /* Hover = high-priority prefetch, so the click that follows is usually instant. */
+    const prefetchFabric = useCallback((fabric) => {
+        imageCache.prefetch(layerUrls(resolveSelection(fabric, intentRef.current)), { front: true });
+    }, []);
+    const prefetchImage = useCallback((url) => imageCache.prefetch([url], { front: true }), []);
 
-        if (effectiveBody?.default_linings && effectiveBody.default_linings.length > 0) {
-            const defaultLining = effectiveBody.default_linings[0];
-            allLayers.push({
-                id: `default-lining-${defaultLining.id}`,
-                type: "defaultLining",
-                image: defaultLining.image,
-                layerIndex: defaultLining.layer_index || 0,
-            });
-        }
+    /* ---------- derived ---------- */
+    const layers = useMemo(() => layersFrom(selection), [selection]);
 
-        if (effectiveLining) {
-            allLayers.push({
-                id: `lining-${effectiveLining.id}`,
-                type: "lining",
-                image: effectiveLining.image,
-                layerIndex: effectiveLining.layer_index || 100,
-            });
-        }
-
-        if (effectiveBody) {
-            allLayers.push({
-                id: `body-${effectiveBody.id}`,
-                type: "body",
-                image: effectiveBody.image,
-                layerIndex: effectiveBody.layer_index || 100,
-            });
-        }
-
-        if (effectiveSleeve) {
-            allLayers.push({
-                id: `sleeve-${effectiveSleeve.id}`,
-                type: "sleeve",
-                image: effectiveSleeve.image,
-                layerIndex: effectiveSleeve.layer_index || 150,
-            });
-        }
-
-        if (effectiveLapel) {
-            allLayers.push({
-                id: `lapel-${effectiveLapel.id}`,
-                type: "lapel",
-                image: effectiveLapel.image,
-                layerIndex: effectiveLapel.layer_index || 150,
-            });
-        }
-
-        if (effectiveSidePocket) {
-            allLayers.push({
-                id: `sidePocket-${effectiveSidePocket.id}`,
-                type: "sidePocket",
-                image: effectiveSidePocket.image,
-                layerIndex: effectiveSidePocket.layer_index || 100,
-            });
-        }
-
-        if (effectiveChestPocket) {
-            allLayers.push({
-                id: `chestPocket-${effectiveChestPocket.id}`,
-                type: "chestPocket",
-                image: effectiveChestPocket.image,
-                layerIndex: effectiveChestPocket.layer_index || 100,
-            });
-        }
-
-        if (effectiveButton) {
-            allLayers.push({
-                id: `button-${effectiveButton.id}`,
-                type: "button",
-                image: effectiveButton.image,
-                layerIndex: effectiveButton.layer_index || 160,
-            });
-        }
-
-        return allLayers.sort((a, b) => a.layerIndex - b.layerIndex);
-    }, [
-        selectedLining, selectedBody, selectedSleeve, selectedLapel,
-        selectedSidePocket, selectedChestPocket, selectedButton
-        // No pending states here
-    ]);
-
-    // --- Determine if any component is loading ---
-    const isAnyLoading = useMemo(() => {
-        return isFabricLoading || isBodyLoading || isSleeveLoading ||
-               isLapelCategoryLoading || isLapelLoading || isSidePocketLoading ||
-               isChestPocketLoading || isButtonLoading || isLiningLoading;
-    }, [
-        isFabricLoading, isBodyLoading, isSleeveLoading,
-        isLapelCategoryLoading, isLapelLoading, isSidePocketLoading,
-        isChestPocketLoading, isButtonLoading, isLiningLoading
-    ]);
-
-    // --- Preload all layers whenever they change ---
-    useEffect(() => {
-        if (viewLoadTimeoutRef.current) {
-            clearTimeout(viewLoadTimeoutRef.current);
-            viewLoadTimeoutRef.current = null;
-        }
-
-        setIsViewReady(false);
-
-        const hasImages = layers.some(layer => layer.image);
-        if (!hasImages) {
-            setIsViewReady(true);
-            return;
-        }
-
-        const urls = layers.map(layer => layer.image).filter(Boolean);
-        setCurrentLayerUrls(urls);
-
-        if (smartImageCache.areAllCached(urls)) {
-            setIsViewReady(true);
-            return;
-        }
-
-        const preloadAll = async () => {
-            try {
-                await smartImageCache.preloadBatch(urls);
-
-                if (smartImageCache.areAllCached(urls)) {
-                    setIsViewReady(true);
-                }
-            } catch (error) {
-                console.error('Error preloading view:', error);
-                viewLoadTimeoutRef.current = setTimeout(() => {
-                    setIsViewReady(true);
-                }, 3000);
-            }
-        };
-
-        preloadAll();
-
-        viewLoadTimeoutRef.current = setTimeout(() => {
-            setIsViewReady(true);
-        }, 5000);
-
-        return () => {
-            if (viewLoadTimeoutRef.current) {
-                clearTimeout(viewLoadTimeoutRef.current);
-                viewLoadTimeoutRef.current = null;
-            }
-        };
-    }, [layers]);
-
-    useEffect(() => {
-        const unsubscribe = smartImageCache.subscribe((loadingCount) => {
-            setActiveLoads(loadingCount);
-
-            if (loadingCount === 0 && currentLayerUrls.length > 0) {
-                setIsViewReady(true);
+    const lapelCategories = useMemo(() => {
+        const lapels = selection?.body?.lapels;
+        if (!lapels || lapels.length === 0) return [];
+        const categories = new Map();
+        lapels.forEach((lapel) => {
+            const c = lapel.category;
+            if (c?.id != null && !categories.has(c.id)) {
+                categories.set(c.id, { id: c.id, name: c.name, diagram: c.diagram, is_default: Boolean(c.is_default) });
             }
         });
+        return [...categories.values()];
+    }, [selection?.body]);
 
-        return () => {
-            if (unsubscribe) unsubscribe();
-        };
-    }, [currentLayerUrls]);
+    const filteredLapels = useMemo(() => {
+        const categoryId = selection?.lapel?.category?.id;
+        if (categoryId == null) return [];
+        return (selection?.body?.lapels || []).filter((l) => l.category?.id === categoryId);
+    }, [selection?.body, selection?.lapel]);
 
-    // ---------- UI COMPONENTS ----------
-    const FabricOptionTile = ({ isSelected, onClick, image, label, price, isLoading }) => {
-        const [cachedImage, setCachedImage] = useState(null);
-        const [failed, setFailed] = useState(false);
+    const isPending = (kind, id) => pending?.kind === kind && pending.id === id;
 
-        useEffect(() => {
-            if (image) {
-                smartImageCache.preloadImage(image).then(img => {
-                    if (img) setCachedImage(img.src);
-                });
-            }
-        }, [image]);
-
-        return (
-            <button
-                onClick={onClick}
-                className={`relative p-3 rounded-lg transition-all duration-300 ease-out ${
-                    isSelected
-                        ? " shadow-md scale-[1.02]"
-                        : " hover:shadow-md hover:scale-[1.02]"
-                }`}
-            >
-                {isSelected && (
-                    <div className="absolute z-20 flex items-center justify-center w-5 h-5 text-xs text-white duration-200 bg-gray-900 rounded-full top-2 right-2 animate-in fade-in zoom-in">
-                        ✓
-                    </div>
-                )}
-                {isLoading && (
-                    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/50">
-                        <Loader2 className="w-5 h-5 text-gray-900 animate-spin" />
-                    </div>
-                )}
-                <div className="w-full aspect-[4/3] flex items-center justify-center bg-transparent rounded-md overflow-hidden">
-                    {(cachedImage || image) && !failed ? (
-                        <img
-                            src={cachedImage || image}
-                            alt={label}
-                            className="object-contain w-full h-full"
-                            onError={() => setFailed(true)}
-                        />
-                    ) : (
-                        <div className="flex items-center justify-center w-full h-full text-xs text-gray-400">
-                            {label || "No image"}
-                        </div>
-                    )}
-                </div>
-                <div className="mt-2">
-                    <div className="text-xs font-medium leading-tight text-center text-gray-700">{label}</div>
-                    {price && <div className="text-xs text-center text-gray-500 mt-0.5">${price}</div>}
-                </div>
-            </button>
-        );
-    };
-
-    const StyleOptionTile = ({ isSelected, onClick, image, hadDiagramField, label, aspect = "aspect-[3/4]", isLoading }) => {
-        const [cachedImage, setCachedImage] = useState(null);
-        const [failed, setFailed] = useState(false);
-        const showImage = Boolean(cachedImage || image) && !failed;
-
-        useEffect(() => {
-            if (image) {
-                smartImageCache.preloadImage(image).then(img => {
-                    if (img) setCachedImage(img.src);
-                });
-            }
-        }, [image]);
-
-        return (
-            <button
-                onClick={onClick}
-                className={`relative p-3 rounded-lg transition-all duration-300 ease-out ${
-                    isSelected
-                        ? " rounded-lg bg-transparent scale-[1.03]"
-                        : "rounded-lg hover:scale-[1.03]"
-                }`}
-                title={DEBUG_DIAGRAMS ? image || "no image URL resolved" : undefined}
-            >
-                {isSelected && (
-                    <div className="absolute z-20 flex items-center justify-center w-5 h-5 text-xs text-white duration-200 bg-gray-900 rounded-full top-2 right-2 animate-in fade-in zoom-in">
-                        ✓
-                    </div>
-                )}
-                {isLoading && (
-                    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/50">
-                        <Loader2 className="w-5 h-5 text-gray-900 animate-spin" />
-                    </div>
-                )}
-
-                {DEBUG_DIAGRAMS && !hadDiagramField && (
-                    <div
-                        className="absolute z-20 w-2.5 h-2.5 rounded-full bg-yellow-400 top-2 left-2"
-                        title="No `diagram` field on this record"
-                    />
-                )}
-                {DEBUG_DIAGRAMS && hadDiagramField && failed && (
-                    <div
-                        className="absolute z-20 flex items-center justify-center w-4 h-4 bg-red-500 rounded-full top-2 left-2"
-                        title="diagram field present but image failed"
-                    >
-                        <AlertTriangle className="w-2.5 h-2.5 text-white" />
-                    </div>
-                )}
-
-                <div className={`w-full ${aspect} flex items-center justify-center rounded-md overflow-hidden bg-white`}>
-                    {showImage ? (
-                        <img
-                            src={cachedImage || image}
-                            alt={label}
-                            className="object-contain w-full h-full p-2"
-                            style={{ mixBlendMode: "multiply" }}
-                            onError={() => {
-                                if (DEBUG_DIAGRAMS) console.warn(`Failed to load image for "${label}":`, image);
-                                setFailed(true);
-                            }}
-                        />
-                    ) : (
-                        <div className="flex items-center justify-center w-full h-full p-2 text-xs text-center text-gray-400">
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                        </div>
-                    )}
-                </div>
-                <div className="mt-2">
-                    <div className="text-xs font-medium leading-tight text-center text-gray-700">{label}</div>
-                </div>
-            </button>
-        );
-    };
-
-    const LiningOptionTile = ({ isSelected, onClick, image, label, isLoading }) => {
-        const [cachedImage, setCachedImage] = useState(null);
-        const [failed, setFailed] = useState(false);
-
-        useEffect(() => {
-            if (image) {
-                smartImageCache.preloadImage(image).then(img => {
-                    if (img) setCachedImage(img.src);
-                });
-            }
-        }, [image]);
-
-        return (
-            <button
-                onClick={onClick}
-                className={`relative p-3 rounded-lg transition-all duration-300 ease-out ${
-                    isSelected
-                        ? " scale-[1.02]"
-                        : " hover:scale-[1.02]"
-                }`}
-            >
-                {isSelected && (
-                    <div className="absolute z-20 flex items-center justify-center w-5 h-5 text-xs text-white duration-200 bg-gray-900 rounded-full top-2 right-2">
-                        ✓
-                    </div>
-                )}
-                {isLoading && (
-                    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/50">
-                        <Loader2 className="w-5 h-5 text-gray-900 animate-spin" />
-                    </div>
-                )}
-                <div className="w-full aspect-[4/3] flex items-center justify-center bg-transparent rounded-md overflow-hidden">
-                    {(cachedImage || image) && !failed ? (
-                        <img
-                            src={cachedImage || image}
-                            alt={label}
-                            className="object-contain w-full h-full p-2"
-                            style={{ mixBlendMode: "multiply" }}
-                            onError={() => setFailed(true)}
-                        />
-                    ) : (
-                        <div className="flex items-center justify-center w-full h-full text-xs text-gray-400">
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                        </div>
-                    )}
-                </div>
-            </button>
-        );
-    };
-
-    const ButtonOptionTile = ({ isSelected, onClick, image, label, isLoading, isDefault = false }) => {
-        const [cachedImage, setCachedImage] = useState(null);
-        const [failed, setFailed] = useState(false);
-
-        useEffect(() => {
-            if (image) {
-                smartImageCache.preloadImage(image).then(img => {
-                    if (img) setCachedImage(img.src);
-                });
-            }
-        }, [image]);
-
-        return (
-            <button
-                onClick={onClick}
-                className={`relative p-3 rounded-lg transition-all duration-300 ease-out ${
-                    isSelected
-                        ? " scale-[1.02]"
-                        : " hover:scale-[1.02]"
-                }`}
-            >
-                {isSelected && (
-                    <div className="absolute z-20 flex items-center justify-center w-5 h-5 text-xs text-white duration-200 bg-gray-900 rounded-full top-2 right-2">
-                        ✓
-                    </div>
-                )}
-                {isLoading && (
-                    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/50">
-                        <Loader2 className="w-5 h-5 text-gray-900 animate-spin" />
-                    </div>
-                )}
-                <div className="flex items-center justify-center w-full overflow-hidden rounded-md aspect-square transparent">
-                    {isDefault ? (
-                        <div className="flex flex-col items-center justify-center w-full h-full p-2">
-                            <div className="flex items-center justify-center w-12 h-12 mb-1 border-4 border-gray-900 rounded-full">
-                                <span className="text-xs text-gray-400">−</span>
-                            </div>
-                        </div>
-                    ) : (cachedImage || image) && !failed ? (
-                        <img
-                            src={cachedImage || image}
-                            alt={label}
-                            className="object-contain w-full h-full p-2"
-                            style={{ mixBlendMode: "multiply" }}
-                            onError={() => setFailed(true)}
-                        />
-                    ) : (
-                        <div className="flex items-center justify-center w-full h-full text-xs text-gray-400">
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                        </div>
-                    )}
-                </div>
-                <div className="mt-2">
-                    <div className="text-xs font-medium leading-tight text-center text-gray-700">{label}</div>
-                </div>
-            </button>
-        );
-    };
-
-    const SectionHeader = ({ title }) => (
-        <div className="px-5 pt-6 pb-3">
-            <span className="text-xs font-bold tracking-wider text-gray-400 uppercase">{title}</span>
-        </div>
-    );
-
-    const RailTab = ({ id, icon: Icon, label }) => {
-        const isActive = activeTab === id;
-        return (
-            <button
-                type="button"
-                onClick={() => handleTabChange(id)}
-                className="flex flex-col items-center gap-1.5 py-3 group w-full transition-transform duration-200 hover:scale-105"
-            >
-                <div
-                    className={`flex items-center justify-center w-11 h-11 rounded-full border-2 transition-all duration-300 ${
-                        isActive
-                            ? "bg-gray-900 border-gray-900 text-white shadow-md scale-110"
-                            : "bg-white border-gray-200 text-gray-400 group-hover:border-gray-400 group-hover:text-gray-600"
-                    }`}
-                >
-                    <Icon className="w-5 h-5" />
-                </div>
-                <span
-                    className={`text-[11px] font-semibold tracking-wide uppercase transition-colors duration-300 ${
-                        isActive ? "text-gray-900" : "text-gray-400"
-                    }`}
-                >
-                    {label}
-                </span>
-            </button>
-        );
-    };
-
-    // ---------- LOADING / ERROR STATES ----------
-    if (loading) {
+    /* ---------- loading / error states ---------- */
+    if (loading || (!error && fabrics?.length > 0 && !selection)) {
         return (
             <div className="flex items-center justify-center h-screen bg-gray-50">
                 <div className="text-center duration-500 animate-in fade-in zoom-in">
                     <Loader2 className="w-12 h-12 mx-auto mb-4 text-gray-900 animate-spin" />
-                    <p className="text-lg text-gray-600">Loading customization options...</p>
+                    <p className="text-lg text-gray-600">{fabrics ? "Preparing your suit…" : "Loading customization options…"}</p>
                 </div>
             </div>
         );
@@ -1241,6 +798,7 @@ const SuitDesigner = () => {
                     <h2 className="mb-2 text-2xl font-bold text-gray-800">Error Loading Data</h2>
                     <p className="mb-4 text-gray-600">{error}</p>
                     <button
+                        type="button"
                         onClick={fetchSuitData}
                         className="px-6 py-2 text-white transition-all duration-200 bg-gray-900 rounded-lg hover:bg-gray-800 hover:shadow-md active:scale-95"
                     >
@@ -1251,7 +809,7 @@ const SuitDesigner = () => {
         );
     }
 
-    if (!suitData || !suitData.success || !selectedFabric) {
+    if (!selection) {
         return (
             <div className="flex items-center justify-center h-screen bg-gray-50">
                 <p className="text-gray-600">No data available</p>
@@ -1259,15 +817,13 @@ const SuitDesigner = () => {
         );
     }
 
-    const lapelCategories = selectedBody ? getLapelCategories(selectedBody.lapels) : [];
-    const filteredLapels =
-        selectedLapelCategory && selectedBody
-            ? selectedBody.lapels.filter((l) => l.category?.id === selectedLapelCategory.id)
-            : [];
+    const { fabric: selectedFabric, body: selectedBody, lapel: selectedLapel } = selection;
+    const bodyButtons = selectedBody?.body_type?.body_buttons || [];
 
-    // ---------- MAIN RENDER ----------
+    /* ---------- main render ---------- */
     return (
         <div className="flex h-screen bg-white">
+            <Head title="Design your suit" />
             <style>{`
                 .loader {
                     --color-1: #d1d5db;
@@ -1290,31 +846,43 @@ const SuitDesigner = () => {
             {/* SIDEBAR */}
             <div className="z-10 flex shadow-lg shrink-0">
                 <div className="overflow-y-auto bg-white border-r border-gray-100 w-96">
-                    <div className="px-5 py-5 border-b border-gray-100">
-                        <h1 className="text-xl font-semibold text-gray-900 transition-all duration-300">
-                            {activeTab === "fabric" && "Choose your fabric"}
-                            {activeTab === "style" && "Customize your style"}
-                            {activeTab === "accents" && "Accents & lining"}
-                        </h1>
-                        <p className="mt-1 text-sm text-gray-500">
-                            {activeTab === "fabric" && "Select the material for your suit"}
-                            {activeTab === "style" && "Personalize the cut and details"}
-                            {activeTab === "accents" && "Add the finishing touches"}
-                        </p>
+                    <div className="flex items-start justify-between gap-3 px-5 py-5 border-b border-gray-100">
+                        <div>
+                            <h1 className="text-xl font-semibold text-gray-900 transition-all duration-300">
+                                {activeTab === "fabric" && "Choose your fabric"}
+                                {activeTab === "style" && "Customize your style"}
+                                {activeTab === "accents" && "Accents & lining"}
+                            </h1>
+                            <p className="mt-1 text-sm text-gray-500">
+                                {activeTab === "fabric" && "Your design carries over to every fabric"}
+                                {activeTab === "style" && "Personalize the cut and details"}
+                                {activeTab === "accents" && "Add the finishing touches"}
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleReset}
+                            title="Reset design"
+                            aria-label="Reset design"
+                            className="p-2 mt-0.5 text-gray-400 transition-all duration-200 rounded-lg hover:text-gray-700 hover:bg-gray-100 active:scale-95"
+                        >
+                            <RotateCcw className="w-4 h-4" />
+                        </button>
                     </div>
 
                     {activeTab === "fabric" && (
                         <div className="p-5 duration-300 animate-in fade-in slide-in-from-left-2">
                             <div className="grid grid-cols-2 gap-3">
-                                {suitData.data.map((fabric) => (
+                                {fabrics.map((fabric) => (
                                     <FabricOptionTile
                                         key={fabric.id}
-                                        isSelected={fabric.id === selectedFabric?.id}
-                                        onClick={() => handleFabricChange(fabric)}
+                                        isSelected={fabric.id === selectedFabric.id}
+                                        onClick={() => changeFabric(fabric)}
+                                        onHover={() => prefetchFabric(fabric)}
                                         image={fabric.image}
                                         label={fabric.name}
                                         price={fabric.price}
-                                        isLoading={isFabricLoading && pendingFabric?.id === fabric.id}
+                                        isLoading={isPending("fabric", fabric.id)}
                                     />
                                 ))}
                             </div>
@@ -1323,7 +891,7 @@ const SuitDesigner = () => {
 
                     {activeTab === "style" && (
                         <div className="pb-5 duration-300 animate-in fade-in slide-in-from-left-2">
-                            {selectedFabric?.bodies && selectedFabric.bodies.length > 0 && (
+                            {selectedFabric.bodies?.length > 0 && (
                                 <>
                                     <SectionHeader title="Body Style" />
                                     <div className="grid grid-cols-3 gap-3 px-5">
@@ -1332,46 +900,45 @@ const SuitDesigner = () => {
                                                 key={body.id}
                                                 isSelected={body.id === selectedBody?.id}
                                                 onClick={() => handleBodyChange(body)}
+                                                onHover={() => prefetchImage(body.image)}
                                                 image={body.body_type?.diagram || body.image}
-                                                hadDiagramField={Boolean(body.body_type?.diagram)}
                                                 label={body.body_type?.name || "Body"}
-                                                isLoading={isBodyLoading && pendingBody?.id === body.id}
+                                                isLoading={isPending("body", body.id)}
                                             />
                                         ))}
                                     </div>
                                 </>
                             )}
 
-                            {selectedBody?.lapels && selectedBody.lapels.length > 0 && (
+                            {lapelCategories.length > 0 && (
                                 <>
                                     <SectionHeader title="Lapel Type" />
                                     <div className="grid grid-cols-3 gap-3 px-5">
                                         {lapelCategories.map((category) => (
                                             <StyleOptionTile
                                                 key={category.id}
-                                                isSelected={selectedLapelCategory?.id === category.id}
+                                                isSelected={selectedLapel?.category?.id === category.id}
                                                 onClick={() => handleLapelCategoryChange(category)}
                                                 image={category.diagram}
-                                                hadDiagramField={Boolean(category.diagram)}
                                                 label={category.name}
-                                                isLoading={isLapelCategoryLoading && pendingLapelCategory?.id === category.id}
+                                                isLoading={isPending("lapelCategory", category.id)}
                                             />
                                         ))}
                                     </div>
 
-                                    {selectedLapelCategory && filteredLapels.length > 0 && (
+                                    {filteredLapels.length > 0 && (
                                         <>
-                                            <SectionHeader title={`${selectedLapelCategory.name} Width`} />
+                                            <SectionHeader title={`${selectedLapel.category?.name ?? "Lapel"} Width`} />
                                             <div className="grid grid-cols-3 gap-3 px-5">
                                                 {filteredLapels.map((lapel) => (
                                                     <StyleOptionTile
                                                         key={lapel.id}
                                                         isSelected={lapel.id === selectedLapel?.id}
                                                         onClick={() => handleLapelSelect(lapel)}
+                                                        onHover={() => prefetchImage(lapel.image)}
                                                         image={lapel.subcategory?.diagram || lapel.image}
-                                                        hadDiagramField={Boolean(lapel.subcategory?.diagram)}
                                                         label={lapel.subcategory?.name || "Width"}
-                                                        isLoading={isLapelLoading && pendingLapel?.id === lapel.id}
+                                                        isLoading={isPending("lapel", lapel.id)}
                                                     />
                                                 ))}
                                             </div>
@@ -1380,57 +947,57 @@ const SuitDesigner = () => {
                                 </>
                             )}
 
-                            {selectedFabric?.sleeves && selectedFabric.sleeves.length > 0 && (
+                            {selectedFabric.sleeves?.length > 0 && (
                                 <>
                                     <SectionHeader title="Sleeves" />
                                     <div className="grid grid-cols-3 gap-3 px-5">
                                         {selectedFabric.sleeves.map((sleeve) => (
                                             <StyleOptionTile
                                                 key={sleeve.id}
-                                                isSelected={sleeve.id === selectedSleeve?.id}
+                                                isSelected={sleeve.id === selection.sleeve?.id}
                                                 onClick={() => handleSleeveSelect(sleeve)}
+                                                onHover={() => prefetchImage(sleeve.image)}
                                                 image={sleeve.type?.diagram || sleeve.image}
-                                                hadDiagramField={Boolean(sleeve.type?.diagram)}
                                                 label={sleeve.type?.name || "Sleeve"}
-                                                isLoading={isSleeveLoading && pendingSleeve?.id === sleeve.id}
+                                                isLoading={isPending("sleeve", sleeve.id)}
                                             />
                                         ))}
                                     </div>
                                 </>
                             )}
 
-                            {selectedFabric?.side_pockets && selectedFabric.side_pockets.length > 0 && (
+                            {selectedFabric.side_pockets?.length > 0 && (
                                 <>
                                     <SectionHeader title="Side Pockets" />
                                     <div className="grid grid-cols-3 gap-3 px-5">
                                         {selectedFabric.side_pockets.map((pocket) => (
                                             <StyleOptionTile
                                                 key={pocket.id}
-                                                isSelected={pocket.id === selectedSidePocket?.id}
+                                                isSelected={pocket.id === selection.sidePocket?.id}
                                                 onClick={() => handleSidePocketSelect(pocket)}
+                                                onHover={() => prefetchImage(pocket.image)}
                                                 image={pocket.type?.diagram || pocket.image}
-                                                hadDiagramField={Boolean(pocket.type?.diagram)}
                                                 label={pocket.type?.name || "Pocket"}
-                                                isLoading={isSidePocketLoading && pendingSidePocket?.id === pocket.id}
+                                                isLoading={isPending("sidePocket", pocket.id)}
                                             />
                                         ))}
                                     </div>
                                 </>
                             )}
 
-                            {selectedFabric?.chest_pockets && selectedFabric.chest_pockets.length > 0 && (
+                            {selectedFabric.chest_pockets?.length > 0 && (
                                 <>
                                     <SectionHeader title="Chest Pockets" />
                                     <div className="grid grid-cols-3 gap-3 px-5">
                                         {selectedFabric.chest_pockets.map((pocket) => (
                                             <StyleOptionTile
                                                 key={pocket.id}
-                                                isSelected={pocket.id === selectedChestPocket?.id}
+                                                isSelected={pocket.id === selection.chestPocket?.id}
                                                 onClick={() => handleChestPocketSelect(pocket)}
+                                                onHover={() => prefetchImage(pocket.image)}
                                                 image={pocket.type?.diagram || pocket.image}
-                                                hadDiagramField={Boolean(pocket.type?.diagram)}
                                                 label={pocket.type?.name || "Pocket"}
-                                                isLoading={isChestPocketLoading && pendingChestPocket?.id === pocket.id}
+                                                isLoading={isPending("chestPocket", pocket.id)}
                                             />
                                         ))}
                                     </div>
@@ -1442,60 +1009,61 @@ const SuitDesigner = () => {
                     {activeTab === "accents" && (
                         <div className="p-5 duration-300 animate-in fade-in slide-in-from-left-2">
                             <div className="mb-6">
-                                <h3 className="mb-4 text-sm font-semibold tracking-wide text-gray-900 uppercase">
-                                    Lining Type
-                                </h3>
+                                <h3 className="mb-4 text-sm font-semibold tracking-wide text-gray-900 uppercase">Lining Type</h3>
 
                                 <div className="grid grid-cols-2 gap-3">
                                     {selectedBody?.default_linings?.map((defaultLining) => (
                                         <LiningOptionTile
                                             key={`default-${defaultLining.id}`}
-                                            isSelected={liningMode === "default" && !selectedLining}
-                                            onClick={() => handleDefaultLiningClick()}
+                                            isSelected={selection.liningMode === "default"}
+                                            onClick={handleDefaultLiningClick}
                                             image={defaultLining.type?.diagram || defaultLining.image}
                                             label={defaultLining.type?.name || "Default"}
-                                            isLoading={false}
+                                            isLoading={isPending("lining", "default")}
                                         />
                                     ))}
 
-                                    {selectedFabric?.custom_linings && selectedFabric.custom_linings.length > 0 && (
+                                    {selectedFabric.custom_linings?.length > 0 && (
                                         <LiningOptionTile
                                             key="custom-type"
-                                            isSelected={liningMode === "custom"}
+                                            isSelected={selection.liningMode === "custom"}
                                             onClick={handleCustomLiningClick}
                                             image={selectedFabric.custom_linings[0].type?.diagram}
-                                            label={selectedFabric.custom_linings[0].type?.name || "Custom"}
-                                            isLoading={false}
+                                            label={
+                                                selection.customLining
+                                                    ? `${selectedFabric.custom_linings[0].type?.name || "Custom"} · ${selection.customLining.fabric?.name ?? ""}`
+                                                    : selectedFabric.custom_linings[0].type?.name || "Custom"
+                                            }
+                                            isLoading={pending?.kind === "lining" && pending.id !== "default"}
                                         />
                                     )}
                                 </div>
                             </div>
 
-                            {selectedBody?.body_type?.body_buttons && selectedBody.body_type.body_buttons.length > 0 && (
+                            {bodyButtons.length > 0 && (
                                 <div className="mb-6">
-                                    <h3 className="mb-4 text-sm font-semibold tracking-wide text-gray-900 uppercase">
-                                        Buttons
-                                    </h3>
+                                    <h3 className="mb-4 text-sm font-semibold tracking-wide text-gray-900 uppercase">Buttons</h3>
 
                                     <div className="grid grid-cols-3 gap-3">
                                         <ButtonOptionTile
                                             key="default-button"
-                                            isSelected={!selectedButton}
-                                            onClick={() => handleDefaultButtonClick()}
+                                            isSelected={!selection.button}
+                                            onClick={handleDefaultButtonClick}
                                             image={null}
                                             label="Default"
-                                            isLoading={false}
-                                            isDefault={true}
+                                            isLoading={isPending("button", "default")}
+                                            isDefault
                                         />
 
-                                        {selectedBody.body_type.body_buttons.map((button) => (
+                                        {bodyButtons.map((button) => (
                                             <ButtonOptionTile
                                                 key={button.id}
-                                                isSelected={selectedButton?.id === button.id}
+                                                isSelected={selection.button?.id === button.id}
                                                 onClick={() => handleButtonSelect(button)}
+                                                onHover={() => prefetchImage(button.image)}
                                                 image={button.button_image?.diagram || button.image}
                                                 label={button.button_image?.name || `Button ${button.id}`}
-                                                isLoading={isButtonLoading && pendingButton?.id === button.id}
+                                                isLoading={isPending("button", button.id)}
                                             />
                                         ))}
                                     </div>
@@ -1513,9 +1081,9 @@ const SuitDesigner = () => {
                     >
                         <Menu className="w-5 h-5" />
                     </button>
-                    <RailTab id="fabric" icon={Layers} label="Fabric" />
-                    <RailTab id="style" icon={Scissors} label="Style" />
-                    <RailTab id="accents" icon={Palette} label="Accents" />
+                    <RailTab id="fabric" icon={Layers} label="Fabric" isActive={activeTab === "fabric"} onSelect={setActiveTab} />
+                    <RailTab id="style" icon={Scissors} label="Style" isActive={activeTab === "style"} onSelect={setActiveTab} />
+                    <RailTab id="accents" icon={Palette} label="Accents" isActive={activeTab === "accents"} onSelect={setActiveTab} />
                 </div>
             </div>
 
@@ -1523,89 +1091,76 @@ const SuitDesigner = () => {
             <div className="relative flex items-center justify-center flex-1 overflow-hidden bg-transparent">
                 <div className="flex items-center justify-center w-full h-full">
                     <div
-                        className="relative w-[600px] h-[800px] bg-transparent rounded-xl overflow-hidden"
+                        className={`relative overflow-hidden bg-transparent rounded-xl transition-opacity duration-300 ease-out ${
+                            pending ? "opacity-60" : "opacity-100"
+                        }`}
                         style={{ width: "600px", height: "800px" }}
                     >
-                        {/* If any component is loading, show a blank canvas with spinner */}
-                        {isAnyLoading ? (
-                            <div className="absolute inset-0 z-50 flex items-center justify-center bg-white">
-                                <div className="flex flex-col items-center gap-4">
-                                    <span className="loader"></span>
-                                    <span className="text-sm font-medium text-gray-500 animate-pulse">Loading...</span>
-                                </div>
-                            </div>
-                        ) : (
-                            // Otherwise render the layers (they should be fully cached)
-                            layers.map((layer) => (
-                                <CanvasLayer key={layer.id} layer={layer} />
-                            ))
-                        )}
+                        {layers.map((layer) => (
+                            <CanvasLayer key={layer.type} layer={layer} />
+                        ))}
                     </div>
                 </div>
 
-                <LoadingIndicator loadingCount={activeLoads} />
+                {pending && (
+                    <div className="absolute z-50 flex items-center gap-2 px-3 py-1.5 rounded-full shadow-lg top-4 right-4 bg-white/90 backdrop-blur-sm animate-in fade-in slide-in-from-top-2">
+                        <Loader2 className="w-3.5 h-3.5 text-gray-900 animate-spin" />
+                        <span className="text-xs font-medium text-gray-700">{PENDING_LABELS[pending.kind] || "Updating"}…</span>
+                    </div>
+                )}
+
+
             </div>
 
-            {/* MODAL */}
-            {showLiningSidebar && (
+            {/* CUSTOM LINING MODAL */}
+            {showLiningModal && (
                 <div
                     className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
                     onClick={(e) => {
-                        if (e.target === e.currentTarget) {
-                            setShowLiningSidebar(false);
-                        }
+                        if (e.target === e.currentTarget) setShowLiningModal(false);
                     }}
                 >
                     <div className="w-full max-w-md p-6 mx-4 duration-300 bg-white shadow-2xl rounded-xl animate-in zoom-in-95 slide-in-from-bottom-4">
                         <div className="flex items-center justify-between mb-5">
                             <div>
-                                <h2 className="text-lg font-semibold text-gray-900">
-                                    Select Custom Lining
-                                </h2>
-                                <p className="mt-1 text-xs text-gray-500">
-                                    Choose your preferred lining
-                                </p>
+                                <h2 className="text-lg font-semibold text-gray-900">Select Custom Lining</h2>
+                                <p className="mt-1 text-xs text-gray-500">Choose your preferred lining</p>
                             </div>
                             <button
-                                onClick={() => setShowLiningSidebar(false)}
+                                type="button"
+                                onClick={() => setShowLiningModal(false)}
                                 className="p-1.5 text-gray-400 transition-all duration-200 rounded-lg hover:text-gray-700 hover:bg-gray-100"
+                                aria-label="Close"
                             >
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
 
                         <div className="grid grid-cols-3 gap-3">
-                            {selectedFabric?.custom_linings?.map((lining) => {
-                                const isSelected = selectedLining?.id === lining.id;
-
+                            {selectedFabric.custom_linings?.map((lining) => {
+                                const isSelected = selection.customLining?.id === lining.id;
                                 return (
                                     <button
                                         key={lining.id}
+                                        type="button"
                                         onClick={() => handleLiningSelect(lining)}
+                                        onMouseEnter={() => prefetchImage(lining.image)}
                                         className={`relative p-3 rounded-lg transition-all duration-300 ease-out ${
-                                            isSelected
-                                                ? "shadow-md scale-[1.02]"
-                                                : "hover:shadow-md hover:scale-[1.02]"
+                                            isSelected ? "shadow-md scale-[1.02]" : "hover:shadow-md hover:scale-[1.02]"
                                         }`}
                                     >
-                                        {isSelected && (
-                                            <div className="absolute z-20 flex items-center justify-center w-5 h-5 text-xs text-white bg-gray-900 rounded-full top-2 right-2 animate-in fade-in zoom-in">
-                                                ✓
-                                            </div>
-                                        )}
-
+                                        {isSelected && <SelectedBadge />}
+                                        {isPending("lining", lining.id) && <TileSpinner />}
                                         <div className="flex items-center justify-center w-full overflow-hidden bg-transparent rounded-md aspect-[4/3]">
-                                            <img
+                                            <LazyImage
                                                 src={lining.fabric?.image || lining.image}
                                                 alt={lining.fabric?.name || "Lining"}
                                                 className="object-contain w-full h-full"
+                                                fallback={<div className="flex items-center justify-center w-full h-full text-xs text-gray-400">{lining.fabric?.name || "Lining"}</div>}
                                             />
                                         </div>
-
                                         <div className="mt-2">
-                                            <div className="text-xs font-medium leading-tight text-center text-gray-700">
-                                                {lining.fabric?.name || "Lining"}
-                                            </div>
+                                            <div className="text-xs font-medium leading-tight text-center text-gray-700">{lining.fabric?.name || "Lining"}</div>
                                         </div>
                                     </button>
                                 );

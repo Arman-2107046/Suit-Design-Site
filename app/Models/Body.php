@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BustsConfiguratorCache;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Body extends Model
 {
+    use BustsConfiguratorCache;
+
     protected $fillable = [
         'fabric_id',
         'body_type_id',

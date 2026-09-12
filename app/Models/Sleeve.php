@@ -1,11 +1,14 @@
 <?php
 namespace App\Models;
 
+use App\Models\Concerns\BustsConfiguratorCache;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Sleeve extends Model
 {
+    use BustsConfiguratorCache;
+
     protected $fillable = [
         'fabric_id',
         'sleeve_type_id',

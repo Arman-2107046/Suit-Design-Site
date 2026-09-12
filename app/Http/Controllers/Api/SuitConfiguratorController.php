@@ -4,11 +4,56 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Fabric;
-use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Cache;
 
 class SuitConfiguratorController extends Controller
 {
-    public function index(): JsonResponse
+    /*
+    |--------------------------------------------------------------------------
+    | Payload cache
+    |--------------------------------------------------------------------------
+    |
+    | Building the configurator payload touches ~20 tables. The serialized
+    | result is cached and invalidated by the BustsConfiguratorCache trait
+    | on every configurator model; the TTL is only a safety net for writes
+    | that bypass Eloquent events (raw query-builder updates).
+    |
+    */
+    public const CACHE_KEY = 'configurator.payload';
+
+    private const CACHE_TTL_SECONDS = 60 * 60 * 12;
+
+    public static function forgetCache(): void
+    {
+        Cache::forget(self::CACHE_KEY);
+    }
+
+    public function index(Request $request): Response
+    {
+        $json = Cache::remember(
+            self::CACHE_KEY,
+            self::CACHE_TTL_SECONDS,
+            fn () => json_encode($this->buildPayload(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+        );
+
+        // Weak ETag so a warm browser revalidates with a 304 instead of
+        // re-downloading the whole payload on every visit.
+        $etag = 'W/"' . md5($json) . '"';
+
+        if ($request->headers->get('If-None-Match') === $etag) {
+            return response('', 304)->header('ETag', $etag);
+        }
+
+        return response($json, 200, [
+            'Content-Type' => 'application/json',
+            'ETag' => $etag,
+            'Cache-Control' => 'private, no-cache',
+        ]);
+    }
+
+    private function buildPayload(): array
     {
         $fabrics = Fabric::with([
             /*
@@ -65,7 +110,7 @@ class SuitConfiguratorController extends Controller
             ->where('status', true)
             ->get();
 
-        return response()->json([
+        return [
             'success' => true,
 
             'data' => $fabrics->map(function ($fabric) {
@@ -482,6 +527,6 @@ class SuitConfiguratorController extends Controller
                         }),
                 ];
             }),
-        ]);
+        ];
     }
 }
