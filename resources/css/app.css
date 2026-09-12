@@ -2,7 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
-/* (Adobe RGB–like look) */
-img {
+/* (Adobe RGB–like look) — applied to option images and the composited suit stage alike */
+img,
+canvas.stage-canvas {
   filter: brightness(1.05) contrast(1.1) saturate(1.15);
+}
+
+/* Horizontal option strips on small screens scroll without a visible bar */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Thin, unobtrusive scrollbar for the options panel */
+.thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #e5e7eb transparent;
+}
+.thin-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: #e5e7eb;
+  border-radius: 9999px;
 }

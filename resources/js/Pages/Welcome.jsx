@@ -1,30 +1,72 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef, memo } from "react";
+import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, memo } from "react";
 import { Head } from "@inertiajs/react";
-import { Loader2, Layers, Scissors, Palette, Menu, X, RotateCcw, Sparkles } from "lucide-react";
+import { Loader2, Layers, Scissors, Palette, Menu, X, RotateCcw } from "lucide-react";
 
 const STORAGE_KEY = "hockerty.premium.design.v1";
 const CANVAS_TIMEOUT_MS = 8000;
 
 /* ------------------------------------------------------------------ */
+/*  Image URLs                                                         */
+/*                                                                     */
+/*  Layer renders are stored as ~2-4 MB PNGs (2291x2727). Cloudinary   */
+/*  can transcode + resize on the fly, so we ask for a device-sized    */
+/*  WebP/AVIF instead (~50-200 KB) — that is what turns a fabric swap  */
+/*  from a long buffer into a short one. Non-Cloudinary URLs and URLs  */
+/*  that already carry a transformation are left untouched.            */
+/* ------------------------------------------------------------------ */
+const CLOUDINARY_UPLOAD = /^(https?:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(v\d+\/.+)$/;
+
+function optimizeUrl(url, width) {
+    if (!url) return url;
+    const m = CLOUDINARY_UPLOAD.exec(url);
+    if (!m) return url;
+    return `${m[1]}f_auto,q_auto${width ? `,w_${width}` : ""}/${m[2]}`;
+}
+
+/* Largest the suit can be drawn on this device, in physical pixels, rounded to a cache-friendly step. */
+function pickLayerWidth() {
+    if (typeof window === "undefined") return 1600;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const longest = Math.max(window.screen?.width || 0, window.screen?.height || 0, window.innerHeight || 0);
+    return Math.min(1600, Math.max(800, Math.ceil((longest * dpr) / 400) * 400));
+}
+
+const LAYER_WIDTH = pickLayerWidth();
+const THUMB_WIDTH = 320;
+
+const layerUrl = (url) => optimizeUrl(url, LAYER_WIDTH);
+const thumbUrl = (url) => optimizeUrl(url, THUMB_WIDTH);
+
+/* Native render aspect (width / height) — used until the first layer is decoded. */
+const DEFAULT_STAGE_ASPECT = 2291 / 2727;
+
+/* ------------------------------------------------------------------ */
 /*  Image cache                                                        */
 /*                                                                     */
-/*  Foreground loads (`load` / `loadAll`) are what a commit waits on.  */
-/*  Background prefetch (`prefetch`) runs through a small concurrency  */
-/*  gate so warming up other fabrics never starves the current view.   */
+/*  Layer renders are fetched as Blobs (tiny: 50-200 KB each), which   */
+/*  is what lets createImageBitmap() decode them off the main thread.  */
+/*  Hosts without CORS fall back to a plain <img>. Foreground loads    */
+/*  (`load` / `loadAll`) are what a commit waits on; background        */
+/*  prefetch (`prefetch`) runs through a small concurrency gate so     */
+/*  warming up other fabrics never starves the current view.          */
 /* ------------------------------------------------------------------ */
 class ImageCache {
     constructor() {
-        this.cache = new Map();     // url -> decoded HTMLImageElement
+        this.cache = new Map();     // url -> Blob | HTMLImageElement
         this.inflight = new Map();  // url -> Promise
         this.failed = new Set();
         this.queue = [];
         this.queued = new Set();
         this.running = 0;
-        this.maxBackground = 3;
+        this.maxBackground = 6;
     }
 
     has(url) {
         return this.cache.has(url);
+    }
+
+    get(url) {
+        return this.cache.get(url) || null;
     }
 
     settled(url) {
@@ -35,29 +77,41 @@ class ImageCache {
         return urls.every((u) => this.settled(u));
     }
 
+    fetchBlob(url) {
+        if (typeof fetch !== "function") return Promise.reject(new Error("no fetch"));
+        return fetch(url, { mode: "cors", credentials: "omit" }).then((res) => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.blob();
+        });
+    }
+
+    loadElement(url) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.decoding = "async";
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error("image error"));
+            img.src = url;
+        });
+    }
+
     load(url) {
         if (!url) return Promise.resolve(null);
         if (this.cache.has(url)) return Promise.resolve(this.cache.get(url));
         if (this.inflight.has(url)) return this.inflight.get(url);
 
-        const promise = new Promise((resolve) => {
-            const img = new Image();
-            img.decoding = "async";
-            img.onload = async () => {
-                // Decode off the main thread now so the swap doesn't jank.
-                try { await img.decode(); } catch { /* still usable */ }
-                this.cache.set(url, img);
-                this.inflight.delete(url);
-                resolve(img);
-            };
-            img.onerror = () => {
+        const promise = this.fetchBlob(url)
+            .catch(() => this.loadElement(url))
+            .then((source) => {
+                this.cache.set(url, source);
+                return source;
+            })
+            .catch(() => {
                 console.warn(`Failed to load image: ${url}`);
                 this.failed.add(url);
-                this.inflight.delete(url);
-                resolve(null);
-            };
-            img.src = url;
-        });
+                return null;
+            })
+            .finally(() => this.inflight.delete(url));
 
         this.inflight.set(url, promise);
         return promise;
@@ -98,6 +152,96 @@ class ImageCache {
 }
 
 const imageCache = new ImageCache();
+
+/* ------------------------------------------------------------------ */
+/*  Bitmap cache                                                       */
+/*                                                                     */
+/*  A cached Blob is not a decoded image. createImageBitmap(blob)      */
+/*  decodes off the main thread and pins the pixels, so a commit       */
+/*  prepares bitmaps while it is "buffering" and the swap itself is a  */
+/*  few sub-millisecond blits in one frame. Kept under a memory budget */
+/*  as an LRU; the layers currently on screen are pinned so a window   */
+/*  resize never has to wait.                                          */
+/* ------------------------------------------------------------------ */
+class BitmapCache {
+    constructor(budgetBytes) {
+        this.budget = budgetBytes;
+        this.bytes = 0;
+        this.map = new Map();      // url -> ImageBitmap, insertion order = LRU order
+        this.inflight = new Map(); // url -> Promise
+        this.pinned = new Set();
+        this.supported = typeof createImageBitmap === "function";
+    }
+
+    has(url) {
+        return this.map.has(url);
+    }
+
+    /* Returns the bitmap and marks it most-recently-used. */
+    get(url) {
+        const bmp = this.map.get(url);
+        if (!bmp) return null;
+        if (bmp.width === 0) { this.drop(url); return null; } // closed elsewhere
+        this.map.delete(url);
+        this.map.set(url, bmp);
+        return bmp;
+    }
+
+    pin(urls) {
+        this.pinned = new Set(urls.filter(Boolean));
+        this.pinned.forEach((u) => this.get(u)); // also bump them to MRU
+    }
+
+    drop(url) {
+        const bmp = this.map.get(url);
+        if (!bmp) return;
+        this.map.delete(url);
+        this.bytes -= bmp.width * bmp.height * 4;
+        try { bmp.close(); } catch { /* already closed */ }
+    }
+
+    put(url, bmp) {
+        if (this.map.has(url)) this.drop(url);
+        this.map.set(url, bmp);
+        this.bytes += bmp.width * bmp.height * 4;
+        for (const oldUrl of [...this.map.keys()]) {
+            if (this.bytes <= this.budget) break;
+            if (oldUrl === url || this.pinned.has(oldUrl)) continue;
+            this.drop(oldUrl);
+        }
+    }
+
+    make(url) {
+        if (!url || !this.supported) return Promise.resolve(null);
+        const hit = this.get(url);
+        if (hit) return Promise.resolve(hit);
+        if (this.inflight.has(url)) return this.inflight.get(url);
+
+        const promise = imageCache
+            .load(url)
+            .then((source) => (source ? createImageBitmap(source) : null))
+            .then((bmp) => {
+                if (bmp) this.put(url, bmp);
+                return bmp;
+            })
+            .catch(() => null)
+            .finally(() => this.inflight.delete(url));
+
+        this.inflight.set(url, promise);
+        return promise;
+    }
+
+    makeAll(urls) {
+        return Promise.all([...new Set(urls.filter(Boolean))].map((u) => this.make(u)));
+    }
+
+    allReady(urls) {
+        return !this.supported || urls.every((u) => !u || this.map.has(u) || imageCache.failed.has(u));
+    }
+}
+
+/* Enough for the suit on screen plus the last few looks; scaled with the layer size the device asked for. */
+const bitmapCache = new BitmapCache(LAYER_WIDTH >= 1600 ? 220 * 1024 * 1024 : 120 * 1024 * 1024);
 
 const runWhenIdle = (fn) => {
     if (typeof window !== "undefined" && "requestIdleCallback" in window) {
@@ -313,7 +457,10 @@ function layersFrom(sel) {
     if (sel.chestPocket) layers.push({ type: "chestPocket", image: sel.chestPocket.image, z: sel.chestPocket.layer_index || 100 });
     if (sel.button) layers.push({ type: "button", image: sel.button.image, z: sel.button.layer_index || 160 });
 
-    return layers.filter((l) => l.image).sort((a, b) => a.z - b.z);
+    return layers
+        .filter((l) => l.image)
+        .map((l) => ({ ...l, image: layerUrl(l.image) }))
+        .sort((a, b) => a.z - b.z);
 }
 
 const layerUrls = (sel) => layersFrom(sel).map((l) => l.image);
@@ -329,7 +476,7 @@ function optionUrlsFor(sel) {
     (f.chest_pockets || []).forEach((p) => urls.push(p.image));
     (sel.body?.body_type?.body_buttons || []).forEach((b) => urls.push(b.image));
     (f.custom_linings || []).forEach((l) => urls.push(l.image));
-    return urls;
+    return urls.map(layerUrl);
 }
 
 /* ------------------------------------------------------------------ */
@@ -379,7 +526,7 @@ const LazyImage = ({ src, alt, className, style, fallback = null }) => {
 };
 
 const SelectedBadge = () => (
-    <div className="absolute z-20 flex items-center justify-center w-5 h-5 text-xs text-white duration-200 bg-gray-900 rounded-full top-2 right-2 animate-in fade-in zoom-in">
+    <div className="absolute z-20 flex items-center justify-center w-5 h-5 text-xs text-white bg-gray-900 rounded-full top-1.5 right-1.5 lg:top-2 lg:right-2 animate-pop">
         ✓
     </div>
 );
@@ -390,30 +537,39 @@ const TileSpinner = () => (
     </div>
 );
 
+/*
+ * Tiles live in a horizontally scrolling strip below `lg` (the panel is a
+ * short bottom sheet there) and in a grid on larger screens. `onHover`
+ * doubles as a pre-click prefetch: mouse enter on desktop, pointer down
+ * on touch, so the click that follows is usually instant.
+ */
+const TILE_BASE =
+    "relative shrink-0 snap-start p-2 lg:p-3 rounded-lg transition-all duration-300 ease-out " +
+    "focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900/40";
+const TILE_W = "w-[6.75rem] sm:w-[7.5rem] lg:w-auto";
+const TILE_W_WIDE = "w-[8.5rem] sm:w-[9.5rem] lg:w-auto";
+
+const tileClass = (isSelected, width = TILE_W) =>
+    `${TILE_BASE} ${width} ${isSelected ? "shadow-md scale-[1.02]" : "hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"}`;
+
+const hoverHandlers = (onHover) => (onHover ? { onMouseEnter: onHover, onFocus: onHover, onPointerDown: onHover } : {});
+
 const FabricOptionTile = memo(function FabricOptionTile({ isSelected, onClick, onHover, image, label, price, isLoading }) {
     return (
-        <button
-            type="button"
-            onClick={onClick}
-            onMouseEnter={onHover}
-            onFocus={onHover}
-            className={`relative p-3 rounded-lg transition-all duration-300 ease-out ${
-                isSelected ? "shadow-md scale-[1.02]" : "hover:shadow-md hover:scale-[1.02]"
-            }`}
-        >
+        <button type="button" onClick={onClick} {...hoverHandlers(onHover)} className={tileClass(isSelected, "w-full")} aria-pressed={isSelected}>
             {isSelected && <SelectedBadge />}
             {isLoading && <TileSpinner />}
             <div className="w-full aspect-[4/3] flex items-center justify-center bg-transparent rounded-md overflow-hidden">
                 <LazyImage
-                    src={image}
+                    src={thumbUrl(image)}
                     alt={label}
                     className="object-contain w-full h-full"
                     fallback={<div className="flex items-center justify-center w-full h-full text-xs text-gray-400">{label || "No image"}</div>}
                 />
             </div>
             <div className="mt-2">
-                <div className="text-xs font-medium leading-tight text-center text-gray-700">{label}</div>
-                {price && <div className="text-xs text-center text-gray-500 mt-0.5">${price}</div>}
+                <div className="text-[11px] lg:text-xs font-medium leading-tight text-center text-gray-700 line-clamp-2 lg:line-clamp-none">{label}</div>
+                {price && <div className="text-[11px] lg:text-xs text-center text-gray-500 mt-0.5">${price}</div>}
             </div>
         </button>
     );
@@ -424,25 +580,23 @@ const StyleOptionTile = memo(function StyleOptionTile({ isSelected, onClick, onH
         <button
             type="button"
             onClick={onClick}
-            onMouseEnter={onHover}
-            onFocus={onHover}
-            className={`relative p-3 rounded-lg transition-all duration-300 ease-out ${
-                isSelected ? "bg-transparent scale-[1.03]" : "hover:scale-[1.03]"
-            }`}
+            {...hoverHandlers(onHover)}
+            className={`${TILE_BASE} ${TILE_W} ${isSelected ? "bg-transparent scale-[1.03]" : "hover:scale-[1.03] active:scale-[0.98]"}`}
+            aria-pressed={isSelected}
         >
             {isSelected && <SelectedBadge />}
             {isLoading && <TileSpinner />}
             <div className={`w-full ${aspect} flex items-center justify-center bg-transparent rounded-md overflow-hidden`}>
                 <LazyImage
-                    src={image}
+                    src={thumbUrl(image)}
                     alt={label}
-                    className="object-contain w-full h-full p-2"
+                    className="object-contain w-full h-full p-1 lg:p-2"
                     style={{ mixBlendMode: "multiply" }}
                     fallback={<div className="flex items-center justify-center w-full h-full p-2 text-xs text-center text-gray-400">{label}</div>}
                 />
             </div>
-            <div className="mt-2">
-                <div className="text-xs font-medium leading-tight text-center text-gray-700">{label}</div>
+            <div className="mt-1.5 lg:mt-2">
+                <div className="text-[11px] lg:text-xs font-medium leading-tight text-center text-gray-700 line-clamp-2 lg:line-clamp-none">{label}</div>
             </div>
         </button>
     );
@@ -450,24 +604,20 @@ const StyleOptionTile = memo(function StyleOptionTile({ isSelected, onClick, onH
 
 const LiningOptionTile = memo(function LiningOptionTile({ isSelected, onClick, image, label, isLoading }) {
     return (
-        <button
-            type="button"
-            onClick={onClick}
-            className={`relative p-3 rounded-lg transition-all duration-300 ease-out ${isSelected ? "scale-[1.02]" : "hover:scale-[1.02]"}`}
-        >
+        <button type="button" onClick={onClick} className={tileClass(isSelected, TILE_W_WIDE)} aria-pressed={isSelected}>
             {isSelected && <SelectedBadge />}
             {isLoading && <TileSpinner />}
             <div className="w-full aspect-[4/3] flex items-center justify-center bg-transparent rounded-md overflow-hidden">
                 <LazyImage
-                    src={image}
+                    src={thumbUrl(image)}
                     alt={label}
-                    className="object-contain w-full h-full p-2"
+                    className="object-contain w-full h-full p-1 lg:p-2"
                     style={{ mixBlendMode: "multiply" }}
                     fallback={<div className="flex items-center justify-center w-full h-full text-xs text-gray-400">{label}</div>}
                 />
             </div>
-            <div className="mt-2">
-                <div className="text-xs font-medium leading-tight text-center text-gray-700">{label}</div>
+            <div className="mt-1.5 lg:mt-2">
+                <div className="text-[11px] lg:text-xs font-medium leading-tight text-center text-gray-700 line-clamp-2 lg:line-clamp-none">{label}</div>
             </div>
         </button>
     );
@@ -475,42 +625,47 @@ const LiningOptionTile = memo(function LiningOptionTile({ isSelected, onClick, i
 
 const ButtonOptionTile = memo(function ButtonOptionTile({ isSelected, onClick, onHover, image, label, isLoading, isDefault = false }) {
     return (
-        <button
-            type="button"
-            onClick={onClick}
-            onMouseEnter={onHover}
-            onFocus={onHover}
-            className={`relative p-3 rounded-lg transition-all duration-300 ease-out ${isSelected ? "scale-[1.02]" : "hover:scale-[1.02]"}`}
-        >
+        <button type="button" onClick={onClick} {...hoverHandlers(onHover)} className={tileClass(isSelected)} aria-pressed={isSelected}>
             {isSelected && <SelectedBadge />}
             {isLoading && <TileSpinner />}
             <div className="flex items-center justify-center w-full overflow-hidden rounded-md aspect-square">
                 {isDefault ? (
                     <div className="flex flex-col items-center justify-center w-full h-full p-2">
-                        <div className="flex items-center justify-center w-12 h-12 mb-1 border-4 border-gray-900 rounded-full">
+                        <div className="flex items-center justify-center w-10 h-10 mb-1 border-4 border-gray-900 rounded-full lg:w-12 lg:h-12">
                             <span className="text-xs text-gray-400">−</span>
                         </div>
                     </div>
                 ) : (
                     <LazyImage
-                        src={image}
+                        src={thumbUrl(image)}
                         alt={label}
-                        className="object-contain w-full h-full p-2"
+                        className="object-contain w-full h-full p-1 lg:p-2"
                         style={{ mixBlendMode: "multiply" }}
                         fallback={<div className="flex items-center justify-center w-full h-full text-xs text-gray-400">{label}</div>}
                     />
                 )}
             </div>
-            <div className="mt-2">
-                <div className="text-xs font-medium leading-tight text-center text-gray-700">{label}</div>
+            <div className="mt-1.5 lg:mt-2">
+                <div className="text-[11px] lg:text-xs font-medium leading-tight text-center text-gray-700 line-clamp-2 lg:line-clamp-none">{label}</div>
             </div>
         </button>
     );
 });
 
 const SectionHeader = ({ title }) => (
-    <div className="px-5 pt-6 pb-3">
-        <span className="text-xs font-bold tracking-wider text-gray-400 uppercase">{title}</span>
+    <div className="px-4 pt-4 pb-2 lg:px-5 lg:pt-6 lg:pb-3">
+        <span className="text-[11px] lg:text-xs font-bold tracking-wider text-gray-400 uppercase">{title}</span>
+    </div>
+);
+
+/* Strip on small screens, grid on lg+. */
+const OptionRow = ({ children, cols = 3, className = "" }) => (
+    <div
+        className={`flex gap-2 px-4 pb-2 overflow-x-auto overscroll-x-contain snap-x snap-proximity no-scrollbar after:block after:shrink-0 after:w-2 lg:after:hidden lg:grid lg:gap-3 lg:px-5 lg:pb-0 lg:overflow-visible ${
+            cols === 2 ? "lg:grid-cols-2" : "lg:grid-cols-3"
+        } ${className}`}
+    >
+        {children}
     </div>
 );
 
@@ -518,44 +673,132 @@ const RailTab = ({ id, icon: Icon, label, isActive, onSelect }) => (
     <button
         type="button"
         onClick={() => onSelect(id)}
-        className="flex flex-col items-center gap-1.5 py-3 group w-full transition-transform duration-200 hover:scale-105"
+        aria-current={isActive ? "page" : undefined}
+        className="flex flex-col items-center justify-center flex-1 lg:flex-none gap-1 lg:gap-1.5 py-1.5 lg:py-3 group w-full transition-transform duration-200 lg:hover:scale-105 focus:outline-none"
     >
         <div
-            className={`flex items-center justify-center w-11 h-11 rounded-full border-2 transition-all duration-300 ${
+            className={`flex items-center justify-center w-9 h-9 lg:w-11 lg:h-11 rounded-full border-2 transition-all duration-300 ${
                 isActive
-                    ? "bg-gray-900 border-gray-900 text-white shadow-md scale-110"
+                    ? "bg-gray-900 border-gray-900 text-white shadow-md lg:scale-110"
                     : "bg-white border-gray-200 text-gray-400 group-hover:border-gray-400 group-hover:text-gray-600"
             }`}
         >
-            <Icon className="w-5 h-5" />
+            <Icon className="w-4 h-4 lg:w-5 lg:h-5" />
         </div>
-        <span className={`text-[11px] font-semibold tracking-wide uppercase transition-colors duration-300 ${isActive ? "text-gray-900" : "text-gray-400"}`}>
+        <span className={`text-[10px] lg:text-[11px] font-semibold tracking-wide uppercase transition-colors duration-300 ${isActive ? "text-gray-900" : "text-gray-400"}`}>
             {label}
         </span>
     </button>
 );
 
-/*
- * Canvas layers are keyed by *type*, not record id, so a fabric or option
- * change swaps the `src` of an existing <img> instead of remounting it.
- * Every src reaching here has already been loaded + decoded by the cache,
- * so the swap paints in the same frame — no spinner, no half-drawn suit.
- */
-const CanvasLayer = memo(function CanvasLayer({ layer }) {
+/* ------------------------------------------------------------------ */
+/*  Suit stage                                                         */
+/*                                                                     */
+/*  All layers are composited onto ONE <canvas> in a single synchronous */
+/*  pass from already-decoded images, so a fabric or option change     */
+/*  lands in exactly one frame — never a half-drawn suit. The canvas   */
+/*  sizes itself to the largest box of the render's aspect that fits   */
+/*  the available area, on any screen.                                 */
+/* ------------------------------------------------------------------ */
+function stageAspectOf(layers) {
+    for (const layer of layers) {
+        const bmp = bitmapCache.get(layer.image);
+        if (bmp?.width && bmp?.height) return bmp.width / bmp.height;
+        const el = imageCache.get(layer.image);
+        if (el instanceof HTMLImageElement && el.naturalWidth && el.naturalHeight) return el.naturalWidth / el.naturalHeight;
+    }
+    return DEFAULT_STAGE_ASPECT;
+}
+
+const SuitStage = memo(function SuitStage({ layers, dimmed }) {
+    const wrapRef = useRef(null);
+    const canvasRef = useRef(null);
+    const [area, setArea] = useState({ w: 0, h: 0 });
+    const [tick, setTick] = useState(0);
+
+    const aspect = useMemo(() => stageAspectOf(layers), [layers]);
+
+    const box = useMemo(() => {
+        if (!area.w || !area.h) return { w: 0, h: 0 };
+        const w = Math.min(area.w, area.h * aspect);
+        return { w: Math.floor(w), h: Math.floor(w / aspect) };
+    }, [area, aspect]);
+
+    /* Track the available area. */
+    useLayoutEffect(() => {
+        const el = wrapRef.current;
+        if (!el) return undefined;
+
+        const measure = () => {
+            const rect = el.getBoundingClientRect();
+            setArea((prev) => (prev.w === rect.width && prev.h === rect.height ? prev : { w: rect.width, h: rect.height }));
+        };
+        measure();
+
+        if (typeof ResizeObserver !== "undefined") {
+            const ro = new ResizeObserver(measure);
+            ro.observe(el);
+            return () => ro.disconnect();
+        }
+        window.addEventListener("resize", measure);
+        return () => window.removeEventListener("resize", measure);
+    }, []);
+
+    /* Composite. Runs before paint, so the swap is atomic. */
+    useLayoutEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas || !box.w || !box.h) return undefined;
+
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const W = Math.round(box.w * dpr);
+        const H = Math.round(box.h * dpr);
+        if (canvas.width !== W || canvas.height !== H) {
+            canvas.width = W;
+            canvas.height = H;
+        }
+
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, W, H);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "medium";
+
+        const missing = [];
+        for (const layer of layers) {
+            const bmp = bitmapCache.get(layer.image);
+            const cached = bmp ? null : imageCache.get(layer.image);
+            const src = bmp || (cached instanceof HTMLImageElement ? cached : null);
+            if (!src) {
+                if (!imageCache.failed.has(layer.image)) missing.push(layer.image);
+                continue;
+            }
+            const sw = bmp ? bmp.width : src.naturalWidth;
+            const sh = bmp ? bmp.height : src.naturalHeight;
+            // object-fit: contain
+            const s = Math.min(W / sw, H / sh);
+            const dw = sw * s;
+            const dh = sh * s;
+            ctx.drawImage(src, (W - dw) / 2, (H - dh) / 2, dw, dh);
+        }
+
+        // Only reachable after the commit timeout let a slow layer through: redraw once it lands.
+        if (missing.length === 0) return undefined;
+        let alive = true;
+        bitmapCache.makeAll(missing).then(() => alive && setTick((t) => t + 1));
+        return () => { alive = false; };
+    }, [layers, box, tick]);
+
     return (
-        <img
-            src={layer.image}
-            alt=""
-            aria-hidden="true"
-            draggable={false}
-            decoding="sync"
-            className="absolute inset-0 object-contain w-full h-full pointer-events-none select-none"
-            style={{ zIndex: layer.z }}
-            onError={(e) => {
-                console.error(`Failed to render ${layer.type}:`, layer.image);
-                e.currentTarget.style.visibility = "hidden";
-            }}
-        />
+        <div ref={wrapRef} className="relative w-full h-full">
+            <canvas
+                ref={canvasRef}
+                role="img"
+                aria-label="Your suit"
+                className={`stage-canvas absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 select-none transition-opacity duration-300 ease-out ${
+                    dimmed ? "opacity-60" : "opacity-100"
+                }`}
+                style={{ width: box.w || undefined, height: box.h || undefined }}
+            />
+        </div>
     );
 });
 
@@ -570,6 +813,12 @@ const PENDING_LABELS = {
     button: "Updating buttons",
     lining: "Updating lining",
     reset: "Resetting design",
+};
+
+const TAB_COPY = {
+    fabric: { title: "Choose your fabric", subtitle: "Your design carries over to every fabric" },
+    style: { title: "Customize your style", subtitle: "Personalize the cut and details" },
+    accents: { title: "Accents & lining", subtitle: "Add the finishing touches" },
 };
 
 /* ------------------------------------------------------------------ */
@@ -593,18 +842,24 @@ const SuitDesigner = () => {
     const targetFabricRef = useRef(null);
     const commitTokenRef = useRef(0);
     const noticeTimerRef = useRef(null);
+    const panelScrollRef = useRef(null);
 
     /* ---------- commit: prepare images, then swap the whole view at once ---------- */
     const commit = useCallback(async (next, pendingInfo, { adjustments = [] } = {}) => {
         const token = ++commitTokenRef.current;
         const urls = layerUrls(next);
 
-        if (!imageCache.allSettled(urls)) {
-            setPending(pendingInfo);
+        if (!bitmapCache.allReady(urls)) {
+            // Network needed -> say so right away. Decode only -> only if it runs long enough to notice.
+            let grace = null;
+            if (!imageCache.allSettled(urls)) setPending(pendingInfo);
+            else grace = setTimeout(() => token === commitTokenRef.current && setPending(pendingInfo), 120);
+
             await Promise.race([
-                imageCache.loadAll(urls),
+                bitmapCache.makeAll(urls),
                 new Promise((resolve) => setTimeout(resolve, CANVAS_TIMEOUT_MS)),
             ]);
+            if (grace) clearTimeout(grace);
         }
 
         if (token !== commitTokenRef.current) return; // superseded by a newer change
@@ -612,6 +867,7 @@ const SuitDesigner = () => {
         intentRef.current = completeIntent(intentRef.current, next);
         saveDesign(next.fabric.id, intentRef.current);
 
+        bitmapCache.pin(urls);
         setSelection(next);
         setPending(null);
 
@@ -662,23 +918,39 @@ const SuitDesigner = () => {
 
     /* ---------- background warm-up after every commit ---------- */
     useEffect(() => {
-        if (!selection || !fabrics) return;
+        if (!selection || !fabrics) return undefined;
 
         const handle = runWhenIdle(() => {
             imageCache.clearQueue();
-            // 1. Everything the user can click on this fabric -> option changes feel instant.
-            imageCache.prefetch(optionUrlsFor(selection));
-            // 2. What every other fabric would look like with this exact design -> fabric switches feel instant.
             const intent = intentRef.current;
-            fabrics
-                .filter((f) => f.id !== selection.fabric.id)
-                .forEach((f) => imageCache.prefetch(layerUrls(resolveSelection(f, intent))));
+            const others = fabrics.filter((f) => f.id !== selection.fabric.id);
+            // What every other fabric would look like with this exact design -> fabric switches feel instant.
+            const otherLooks = () => others.forEach((f) => imageCache.prefetch(layerUrls(resolveSelection(f, intent))));
+            // Everything the user can click on this fabric -> option changes feel instant.
+            const thisOptions = () => imageCache.prefetch(optionUrlsFor(selection));
+            // Whichever the open tab makes the likelier next click goes first.
+            if (activeTab === "fabric") { otherLooks(); thisOptions(); } else { thisOptions(); otherLooks(); }
+            // Then every option on every other fabric, so nothing buffers after the first minute.
+            others.forEach((f) => imageCache.prefetch(optionUrlsFor(resolveSelection(f, intent))));
         });
 
         return () => cancelIdle(handle);
-    }, [selection, fabrics]);
+    }, [selection, fabrics, activeTab]);
 
     useEffect(() => () => noticeTimerRef.current && clearTimeout(noticeTimerRef.current), []);
+
+    /* Scroll the panel back to the top when switching tabs. */
+    useEffect(() => {
+        panelScrollRef.current?.scrollTo({ top: 0 });
+    }, [activeTab]);
+
+    /* Close the lining modal on Escape. */
+    useEffect(() => {
+        if (!showLiningModal) return undefined;
+        const onKey = (e) => e.key === "Escape" && setShowLiningModal(false);
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [showLiningModal]);
 
     /* ---------- change handlers ---------- */
     const changeFabric = useCallback(
@@ -730,7 +1002,7 @@ const SuitDesigner = () => {
     const handleCustomLiningClick = () => {
         setShowLiningModal(true);
         const linings = targetFabricRef.current?.custom_linings || [];
-        imageCache.prefetch(linings.flatMap((l) => [l.image, l.fabric?.image]), { front: true });
+        imageCache.prefetch(linings.flatMap((l) => [layerUrl(l.image), thumbUrl(l.fabric?.image)]), { front: true });
     };
 
     const handleLiningSelect = (lining) => {
@@ -748,11 +1020,11 @@ const SuitDesigner = () => {
         commit(resolveSelection(fabric, EMPTY_INTENT), { kind: "reset" });
     };
 
-    /* Hover = high-priority prefetch, so the click that follows is usually instant. */
+    /* Hover / touch-down = high-priority prefetch, so the click that follows is usually instant. */
     const prefetchFabric = useCallback((fabric) => {
         imageCache.prefetch(layerUrls(resolveSelection(fabric, intentRef.current)), { front: true });
     }, []);
-    const prefetchImage = useCallback((url) => imageCache.prefetch([url], { front: true }), []);
+    const prefetchImage = useCallback((url) => imageCache.prefetch([layerUrl(url)], { front: true }), []);
 
     /* ---------- derived ---------- */
     const layers = useMemo(() => layersFrom(selection), [selection]);
@@ -781,10 +1053,11 @@ const SuitDesigner = () => {
     /* ---------- loading / error states ---------- */
     if (loading || (!error && fabrics?.length > 0 && !selection)) {
         return (
-            <div className="flex items-center justify-center h-screen bg-gray-50">
-                <div className="text-center duration-500 animate-in fade-in zoom-in">
-                    <Loader2 className="w-12 h-12 mx-auto mb-4 text-gray-900 animate-spin" />
-                    <p className="text-lg text-gray-600">{fabrics ? "Preparing your suit…" : "Loading customization options…"}</p>
+            <div className="flex items-center justify-center h-dvh px-6 bg-gray-50">
+                <Head title="Design your suit" />
+                <div className="text-center animate-fade-in">
+                    <Loader2 className="w-10 h-10 mx-auto mb-4 text-gray-900 sm:w-12 sm:h-12 animate-spin" />
+                    <p className="text-base text-gray-600 sm:text-lg">{fabrics ? "Preparing your suit…" : "Loading customization options…"}</p>
                 </div>
             </div>
         );
@@ -792,11 +1065,12 @@ const SuitDesigner = () => {
 
     if (error) {
         return (
-            <div className="flex items-center justify-center h-screen bg-gray-50">
-                <div className="max-w-md p-8 text-center duration-500 bg-white shadow-lg rounded-xl animate-in fade-in slide-in-from-bottom-4">
+            <div className="flex items-center justify-center h-dvh px-4 bg-gray-50">
+                <Head title="Design your suit" />
+                <div className="w-full max-w-md p-6 text-center bg-white shadow-lg sm:p-8 rounded-xl animate-slide-up">
                     <div className="mb-4 text-5xl">⚠️</div>
-                    <h2 className="mb-2 text-2xl font-bold text-gray-800">Error Loading Data</h2>
-                    <p className="mb-4 text-gray-600">{error}</p>
+                    <h2 className="mb-2 text-xl font-bold text-gray-800 sm:text-2xl">Error Loading Data</h2>
+                    <p className="mb-4 text-sm text-gray-600 sm:text-base">{error}</p>
                     <button
                         type="button"
                         onClick={fetchSuitData}
@@ -811,7 +1085,8 @@ const SuitDesigner = () => {
 
     if (!selection) {
         return (
-            <div className="flex items-center justify-center h-screen bg-gray-50">
+            <div className="flex items-center justify-center h-dvh px-6 bg-gray-50">
+                <Head title="Design your suit" />
                 <p className="text-gray-600">No data available</p>
             </div>
         );
@@ -819,199 +1094,215 @@ const SuitDesigner = () => {
 
     const { fabric: selectedFabric, body: selectedBody, lapel: selectedLapel } = selection;
     const bodyButtons = selectedBody?.body_type?.body_buttons || [];
+    const copy = TAB_COPY[activeTab];
 
     /* ---------- main render ---------- */
     return (
-        <div className="flex h-screen bg-white">
+        <div className="flex flex-col h-dvh overflow-hidden bg-white max-lg:landscape:flex-row lg:flex-row">
             <Head title="Design your suit" />
-            <style>{`
-                .loader {
-                    --color-1: #d1d5db;
-                    --size: 2px;
-                    width: calc(48 * var(--size));
-                    height: calc(48 * var(--size));
-                    border: calc(5 * var(--size)) dotted var(--color-1);
-                    border-radius: 50%;
-                    display: inline-block;
-                    position: relative;
-                    box-sizing: border-box;
-                    animation: rotation 2s linear infinite;
-                }
-                @keyframes rotation {
-                    0% { transform: rotate(0deg); }
-                    100% { transform: rotate(360deg); }
-                }
-            `}</style>
 
-            {/* SIDEBAR */}
-            <div className="z-10 flex shadow-lg shrink-0">
-                <div className="overflow-y-auto bg-white border-r border-gray-100 w-96">
-                    <div className="flex items-start justify-between gap-3 px-5 py-5 border-b border-gray-100">
-                        <div>
-                            <h1 className="text-xl font-semibold text-gray-900 transition-all duration-300">
-                                {activeTab === "fabric" && "Choose your fabric"}
-                                {activeTab === "style" && "Customize your style"}
-                                {activeTab === "accents" && "Accents & lining"}
-                            </h1>
-                            <p className="mt-1 text-sm text-gray-500">
-                                {activeTab === "fabric" && "Your design carries over to every fabric"}
-                                {activeTab === "style" && "Personalize the cut and details"}
-                                {activeTab === "accents" && "Add the finishing touches"}
-                            </p>
+            {/* STAGE — on top below lg, on the right from lg */}
+            <main className="relative flex-1 min-w-0 min-h-0 order-1 max-lg:landscape:order-2 lg:order-2 p-3 sm:p-5 lg:p-8">
+                <SuitStage layers={layers} dimmed={Boolean(pending)} />
+
+                {pending && (
+                    <div className="absolute z-30 flex items-center gap-2 px-3 py-1.5 rounded-full shadow-lg top-3 right-3 lg:top-4 lg:right-4 bg-white/90 backdrop-blur-sm animate-slide-down">
+                        <Loader2 className="w-3.5 h-3.5 text-gray-900 animate-spin" />
+                        <span className="text-xs font-medium text-gray-700">{PENDING_LABELS[pending.kind] || "Updating"}…</span>
+                    </div>
+                )}
+
+                {notice && (
+                    <div
+                        role="status"
+                        className="absolute z-30 bottom-3 left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] max-w-sm px-4 py-3 bg-gray-900/95 text-white rounded-xl shadow-xl backdrop-blur-sm animate-slide-up"
+                    >
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <p className="text-xs font-semibold">Adjusted for {notice.fabric}</p>
+                                <ul className="mt-1 space-y-0.5 text-[11px] text-gray-300">
+                                    {notice.items.map((item) => (
+                                        <li key={item}>{item}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setNotice(null)}
+                                aria-label="Dismiss"
+                                className="p-1 -m-1 text-gray-400 transition-colors rounded hover:text-white"
+                            >
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </main>
+
+            {/* PANEL — bottom sheet below lg, sidebar from lg */}
+            <aside
+                className="z-10 flex flex-col order-2 w-full shrink-0 h-[44dvh] md:h-[40dvh] max-lg:landscape:order-1 max-lg:landscape:h-full max-lg:landscape:w-[min(55vw,24rem)] max-lg:landscape:border-t-0 max-lg:landscape:border-r lg:order-1 lg:flex-row lg:h-full lg:w-[26rem] xl:w-[29rem] bg-white border-t border-gray-100 lg:border-t-0 lg:border-r shadow-[0_-6px_24px_rgba(0,0,0,0.06)] lg:shadow-lg"
+                aria-label="Customization options"
+            >
+                {/* content */}
+                <div className="flex flex-col flex-1 min-w-0 min-h-0">
+                    <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-gray-100 lg:items-start lg:px-5 lg:py-5 shrink-0">
+                        <div className="min-w-0">
+                            <h1 className="text-base font-semibold text-gray-900 truncate lg:text-xl">{copy.title}</h1>
+                            <p className="hidden mt-0.5 text-xs text-gray-500 sm:block lg:mt-1 lg:text-sm">{copy.subtitle}</p>
                         </div>
                         <button
                             type="button"
                             onClick={handleReset}
                             title="Reset design"
                             aria-label="Reset design"
-                            className="p-2 mt-0.5 text-gray-400 transition-all duration-200 rounded-lg hover:text-gray-700 hover:bg-gray-100 active:scale-95"
+                            className="p-2 text-gray-400 transition-all duration-200 rounded-lg shrink-0 hover:text-gray-700 hover:bg-gray-100 active:scale-95"
                         >
                             <RotateCcw className="w-4 h-4" />
                         </button>
                     </div>
 
-                    {activeTab === "fabric" && (
-                        <div className="p-5 duration-300 animate-in fade-in slide-in-from-left-2">
-                            <div className="grid grid-cols-2 gap-3">
-                                {fabrics.map((fabric) => (
-                                    <FabricOptionTile
-                                        key={fabric.id}
-                                        isSelected={fabric.id === selectedFabric.id}
-                                        onClick={() => changeFabric(fabric)}
-                                        onHover={() => prefetchFabric(fabric)}
-                                        image={fabric.image}
-                                        label={fabric.name}
-                                        price={fabric.price}
-                                        isLoading={isPending("fabric", fabric.id)}
-                                    />
-                                ))}
+                    <div ref={panelScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain thin-scrollbar">
+                        {activeTab === "fabric" && (
+                            <div key="fabric" className="p-4 lg:p-5 animate-slide-in-left">
+                                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-2 lg:gap-3">
+                                    {fabrics.map((fabric) => (
+                                        <FabricOptionTile
+                                            key={fabric.id}
+                                            isSelected={fabric.id === selectedFabric.id}
+                                            onClick={() => changeFabric(fabric)}
+                                            onHover={() => prefetchFabric(fabric)}
+                                            image={fabric.image}
+                                            label={fabric.name}
+                                            price={fabric.price}
+                                            isLoading={isPending("fabric", fabric.id)}
+                                        />
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    {activeTab === "style" && (
-                        <div className="pb-5 duration-300 animate-in fade-in slide-in-from-left-2">
-                            {selectedFabric.bodies?.length > 0 && (
-                                <>
-                                    <SectionHeader title="Body Style" />
-                                    <div className="grid grid-cols-3 gap-3 px-5">
-                                        {selectedFabric.bodies.map((body) => (
-                                            <StyleOptionTile
-                                                key={body.id}
-                                                isSelected={body.id === selectedBody?.id}
-                                                onClick={() => handleBodyChange(body)}
-                                                onHover={() => prefetchImage(body.image)}
-                                                image={body.body_type?.diagram || body.image}
-                                                label={body.body_type?.name || "Body"}
-                                                isLoading={isPending("body", body.id)}
-                                            />
-                                        ))}
-                                    </div>
-                                </>
-                            )}
+                        {activeTab === "style" && (
+                            <div key="style" className="pb-4 lg:pb-5 animate-slide-in-left">
+                                {selectedFabric.bodies?.length > 0 && (
+                                    <>
+                                        <SectionHeader title="Body Style" />
+                                        <OptionRow>
+                                            {selectedFabric.bodies.map((body) => (
+                                                <StyleOptionTile
+                                                    key={body.id}
+                                                    isSelected={body.id === selectedBody?.id}
+                                                    onClick={() => handleBodyChange(body)}
+                                                    onHover={() => prefetchImage(body.image)}
+                                                    image={body.body_type?.diagram || body.image}
+                                                    label={body.body_type?.name || "Body"}
+                                                    isLoading={isPending("body", body.id)}
+                                                />
+                                            ))}
+                                        </OptionRow>
+                                    </>
+                                )}
 
-                            {lapelCategories.length > 0 && (
-                                <>
-                                    <SectionHeader title="Lapel Type" />
-                                    <div className="grid grid-cols-3 gap-3 px-5">
-                                        {lapelCategories.map((category) => (
-                                            <StyleOptionTile
-                                                key={category.id}
-                                                isSelected={selectedLapel?.category?.id === category.id}
-                                                onClick={() => handleLapelCategoryChange(category)}
-                                                image={category.diagram}
-                                                label={category.name}
-                                                isLoading={isPending("lapelCategory", category.id)}
-                                            />
-                                        ))}
-                                    </div>
+                                {lapelCategories.length > 0 && (
+                                    <>
+                                        <SectionHeader title="Lapel Type" />
+                                        <OptionRow>
+                                            {lapelCategories.map((category) => (
+                                                <StyleOptionTile
+                                                    key={category.id}
+                                                    isSelected={selectedLapel?.category?.id === category.id}
+                                                    onClick={() => handleLapelCategoryChange(category)}
+                                                    image={category.diagram}
+                                                    label={category.name}
+                                                    isLoading={isPending("lapelCategory", category.id)}
+                                                />
+                                            ))}
+                                        </OptionRow>
 
-                                    {filteredLapels.length > 0 && (
-                                        <>
-                                            <SectionHeader title={`${selectedLapel.category?.name ?? "Lapel"} Width`} />
-                                            <div className="grid grid-cols-3 gap-3 px-5">
-                                                {filteredLapels.map((lapel) => (
-                                                    <StyleOptionTile
-                                                        key={lapel.id}
-                                                        isSelected={lapel.id === selectedLapel?.id}
-                                                        onClick={() => handleLapelSelect(lapel)}
-                                                        onHover={() => prefetchImage(lapel.image)}
-                                                        image={lapel.subcategory?.diagram || lapel.image}
-                                                        label={lapel.subcategory?.name || "Width"}
-                                                        isLoading={isPending("lapel", lapel.id)}
-                                                    />
-                                                ))}
-                                            </div>
-                                        </>
-                                    )}
-                                </>
-                            )}
+                                        {filteredLapels.length > 0 && (
+                                            <>
+                                                <SectionHeader title={`${selectedLapel.category?.name ?? "Lapel"} Width`} />
+                                                <OptionRow>
+                                                    {filteredLapels.map((lapel) => (
+                                                        <StyleOptionTile
+                                                            key={lapel.id}
+                                                            isSelected={lapel.id === selectedLapel?.id}
+                                                            onClick={() => handleLapelSelect(lapel)}
+                                                            onHover={() => prefetchImage(lapel.image)}
+                                                            image={lapel.subcategory?.diagram || lapel.image}
+                                                            label={lapel.subcategory?.name || "Width"}
+                                                            isLoading={isPending("lapel", lapel.id)}
+                                                        />
+                                                    ))}
+                                                </OptionRow>
+                                            </>
+                                        )}
+                                    </>
+                                )}
 
-                            {selectedFabric.sleeves?.length > 0 && (
-                                <>
-                                    <SectionHeader title="Sleeves" />
-                                    <div className="grid grid-cols-3 gap-3 px-5">
-                                        {selectedFabric.sleeves.map((sleeve) => (
-                                            <StyleOptionTile
-                                                key={sleeve.id}
-                                                isSelected={sleeve.id === selection.sleeve?.id}
-                                                onClick={() => handleSleeveSelect(sleeve)}
-                                                onHover={() => prefetchImage(sleeve.image)}
-                                                image={sleeve.type?.diagram || sleeve.image}
-                                                label={sleeve.type?.name || "Sleeve"}
-                                                isLoading={isPending("sleeve", sleeve.id)}
-                                            />
-                                        ))}
-                                    </div>
-                                </>
-                            )}
+                                {selectedFabric.sleeves?.length > 0 && (
+                                    <>
+                                        <SectionHeader title="Sleeves" />
+                                        <OptionRow>
+                                            {selectedFabric.sleeves.map((sleeve) => (
+                                                <StyleOptionTile
+                                                    key={sleeve.id}
+                                                    isSelected={sleeve.id === selection.sleeve?.id}
+                                                    onClick={() => handleSleeveSelect(sleeve)}
+                                                    onHover={() => prefetchImage(sleeve.image)}
+                                                    image={sleeve.type?.diagram || sleeve.image}
+                                                    label={sleeve.type?.name || "Sleeve"}
+                                                    isLoading={isPending("sleeve", sleeve.id)}
+                                                />
+                                            ))}
+                                        </OptionRow>
+                                    </>
+                                )}
 
-                            {selectedFabric.side_pockets?.length > 0 && (
-                                <>
-                                    <SectionHeader title="Side Pockets" />
-                                    <div className="grid grid-cols-3 gap-3 px-5">
-                                        {selectedFabric.side_pockets.map((pocket) => (
-                                            <StyleOptionTile
-                                                key={pocket.id}
-                                                isSelected={pocket.id === selection.sidePocket?.id}
-                                                onClick={() => handleSidePocketSelect(pocket)}
-                                                onHover={() => prefetchImage(pocket.image)}
-                                                image={pocket.type?.diagram || pocket.image}
-                                                label={pocket.type?.name || "Pocket"}
-                                                isLoading={isPending("sidePocket", pocket.id)}
-                                            />
-                                        ))}
-                                    </div>
-                                </>
-                            )}
+                                {selectedFabric.side_pockets?.length > 0 && (
+                                    <>
+                                        <SectionHeader title="Side Pockets" />
+                                        <OptionRow>
+                                            {selectedFabric.side_pockets.map((pocket) => (
+                                                <StyleOptionTile
+                                                    key={pocket.id}
+                                                    isSelected={pocket.id === selection.sidePocket?.id}
+                                                    onClick={() => handleSidePocketSelect(pocket)}
+                                                    onHover={() => prefetchImage(pocket.image)}
+                                                    image={pocket.type?.diagram || pocket.image}
+                                                    label={pocket.type?.name || "Pocket"}
+                                                    isLoading={isPending("sidePocket", pocket.id)}
+                                                />
+                                            ))}
+                                        </OptionRow>
+                                    </>
+                                )}
 
-                            {selectedFabric.chest_pockets?.length > 0 && (
-                                <>
-                                    <SectionHeader title="Chest Pockets" />
-                                    <div className="grid grid-cols-3 gap-3 px-5">
-                                        {selectedFabric.chest_pockets.map((pocket) => (
-                                            <StyleOptionTile
-                                                key={pocket.id}
-                                                isSelected={pocket.id === selection.chestPocket?.id}
-                                                onClick={() => handleChestPocketSelect(pocket)}
-                                                onHover={() => prefetchImage(pocket.image)}
-                                                image={pocket.type?.diagram || pocket.image}
-                                                label={pocket.type?.name || "Pocket"}
-                                                isLoading={isPending("chestPocket", pocket.id)}
-                                            />
-                                        ))}
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    )}
+                                {selectedFabric.chest_pockets?.length > 0 && (
+                                    <>
+                                        <SectionHeader title="Chest Pockets" />
+                                        <OptionRow>
+                                            {selectedFabric.chest_pockets.map((pocket) => (
+                                                <StyleOptionTile
+                                                    key={pocket.id}
+                                                    isSelected={pocket.id === selection.chestPocket?.id}
+                                                    onClick={() => handleChestPocketSelect(pocket)}
+                                                    onHover={() => prefetchImage(pocket.image)}
+                                                    image={pocket.type?.diagram || pocket.image}
+                                                    label={pocket.type?.name || "Pocket"}
+                                                    isLoading={isPending("chestPocket", pocket.id)}
+                                                />
+                                            ))}
+                                        </OptionRow>
+                                    </>
+                                )}
+                            </div>
+                        )}
 
-                    {activeTab === "accents" && (
-                        <div className="p-5 duration-300 animate-in fade-in slide-in-from-left-2">
-                            <div className="mb-6">
-                                <h3 className="mb-4 text-sm font-semibold tracking-wide text-gray-900 uppercase">Lining Type</h3>
-
-                                <div className="grid grid-cols-2 gap-3">
+                        {activeTab === "accents" && (
+                            <div key="accents" className="pb-4 lg:pb-5 animate-slide-in-left">
+                                <SectionHeader title="Lining Type" />
+                                <OptionRow cols={2}>
                                     {selectedBody?.default_linings?.map((defaultLining) => (
                                         <LiningOptionTile
                                             key={`default-${defaultLining.id}`}
@@ -1037,46 +1328,49 @@ const SuitDesigner = () => {
                                             isLoading={pending?.kind === "lining" && pending.id !== "default"}
                                         />
                                     )}
-                                </div>
-                            </div>
+                                </OptionRow>
 
-                            {bodyButtons.length > 0 && (
-                                <div className="mb-6">
-                                    <h3 className="mb-4 text-sm font-semibold tracking-wide text-gray-900 uppercase">Buttons</h3>
-
-                                    <div className="grid grid-cols-3 gap-3">
-                                        <ButtonOptionTile
-                                            key="default-button"
-                                            isSelected={!selection.button}
-                                            onClick={handleDefaultButtonClick}
-                                            image={null}
-                                            label="Default"
-                                            isLoading={isPending("button", "default")}
-                                            isDefault
-                                        />
-
-                                        {bodyButtons.map((button) => (
+                                {bodyButtons.length > 0 && (
+                                    <>
+                                        <SectionHeader title="Buttons" />
+                                        <OptionRow>
                                             <ButtonOptionTile
-                                                key={button.id}
-                                                isSelected={selection.button?.id === button.id}
-                                                onClick={() => handleButtonSelect(button)}
-                                                onHover={() => prefetchImage(button.image)}
-                                                image={button.button_image?.diagram || button.image}
-                                                label={button.button_image?.name || `Button ${button.id}`}
-                                                isLoading={isPending("button", button.id)}
+                                                key="default-button"
+                                                isSelected={!selection.button}
+                                                onClick={handleDefaultButtonClick}
+                                                image={null}
+                                                label="Default"
+                                                isLoading={isPending("button", "default")}
+                                                isDefault
                                             />
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
+
+                                            {bodyButtons.map((button) => (
+                                                <ButtonOptionTile
+                                                    key={button.id}
+                                                    isSelected={selection.button?.id === button.id}
+                                                    onClick={() => handleButtonSelect(button)}
+                                                    onHover={() => prefetchImage(button.image)}
+                                                    image={button.button_image?.diagram || button.image}
+                                                    label={button.button_image?.name || `Button ${button.id}`}
+                                                    isLoading={isPending("button", button.id)}
+                                                />
+                                            ))}
+                                        </OptionRow>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
 
-                <div className="flex flex-col items-center w-20 gap-4 py-6 border-l border-gray-100 bg-gray-50">
+                {/* rail — bottom tab bar below lg, vertical rail from lg */}
+                <nav
+                    className="flex items-center shrink-0 border-t border-gray-100 bg-gray-50 pb-[env(safe-area-inset-bottom)] lg:flex-col lg:w-20 lg:gap-4 lg:py-6 lg:border-t-0 lg:border-l"
+                    aria-label="Sections"
+                >
                     <button
                         type="button"
-                        className="flex items-center justify-center w-10 h-10 mb-2 text-gray-500 transition-colors rounded-lg hover:bg-gray-100"
+                        className="items-center justify-center hidden w-10 h-10 mb-2 text-gray-500 transition-colors rounded-lg lg:flex hover:bg-gray-100"
                         aria-label="Menu"
                     >
                         <Menu className="w-5 h-5" />
@@ -1084,47 +1378,27 @@ const SuitDesigner = () => {
                     <RailTab id="fabric" icon={Layers} label="Fabric" isActive={activeTab === "fabric"} onSelect={setActiveTab} />
                     <RailTab id="style" icon={Scissors} label="Style" isActive={activeTab === "style"} onSelect={setActiveTab} />
                     <RailTab id="accents" icon={Palette} label="Accents" isActive={activeTab === "accents"} onSelect={setActiveTab} />
-                </div>
-            </div>
+                </nav>
+            </aside>
 
-            {/* CANVAS */}
-            <div className="relative flex items-center justify-center flex-1 overflow-hidden bg-transparent">
-                <div className="flex items-center justify-center w-full h-full">
-                    <div
-                        className={`relative overflow-hidden bg-transparent rounded-xl transition-opacity duration-300 ease-out ${
-                            pending ? "opacity-60" : "opacity-100"
-                        }`}
-                        style={{ width: "600px", height: "800px" }}
-                    >
-                        {layers.map((layer) => (
-                            <CanvasLayer key={layer.type} layer={layer} />
-                        ))}
-                    </div>
-                </div>
-
-                {pending && (
-                    <div className="absolute z-50 flex items-center gap-2 px-3 py-1.5 rounded-full shadow-lg top-4 right-4 bg-white/90 backdrop-blur-sm animate-in fade-in slide-in-from-top-2">
-                        <Loader2 className="w-3.5 h-3.5 text-gray-900 animate-spin" />
-                        <span className="text-xs font-medium text-gray-700">{PENDING_LABELS[pending.kind] || "Updating"}…</span>
-                    </div>
-                )}
-
-
-            </div>
-
-            {/* CUSTOM LINING MODAL */}
+            {/* CUSTOM LINING MODAL — bottom sheet on phones, dialog from sm */}
             {showLiningModal && (
                 <div
-                    className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
+                    className="fixed inset-0 z-[1000] flex items-end justify-center sm:items-center bg-black/40 backdrop-blur-sm animate-fade-in"
                     onClick={(e) => {
                         if (e.target === e.currentTarget) setShowLiningModal(false);
                     }}
                 >
-                    <div className="w-full max-w-md p-6 mx-4 duration-300 bg-white shadow-2xl rounded-xl animate-in zoom-in-95 slide-in-from-bottom-4">
-                        <div className="flex items-center justify-between mb-5">
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="lining-modal-title"
+                        className="w-full sm:max-w-md max-h-[85dvh] flex flex-col bg-white shadow-2xl rounded-t-2xl sm:rounded-xl sm:mx-4 animate-slide-up"
+                    >
+                        <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-gray-100 sm:pt-5 shrink-0">
                             <div>
-                                <h2 className="text-lg font-semibold text-gray-900">Select Custom Lining</h2>
-                                <p className="mt-1 text-xs text-gray-500">Choose your preferred lining</p>
+                                <h2 id="lining-modal-title" className="text-lg font-semibold text-gray-900">Select Custom Lining</h2>
+                                <p className="mt-0.5 text-xs text-gray-500">Choose your preferred lining</p>
                             </div>
                             <button
                                 type="button"
@@ -1136,7 +1410,7 @@ const SuitDesigner = () => {
                             </button>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-3 gap-2 p-4 overflow-y-auto sm:gap-3 sm:p-5 pb-[max(1rem,env(safe-area-inset-bottom))] thin-scrollbar">
                             {selectedFabric.custom_linings?.map((lining) => {
                                 const isSelected = selection.customLining?.id === lining.id;
                                 return (
@@ -1144,23 +1418,24 @@ const SuitDesigner = () => {
                                         key={lining.id}
                                         type="button"
                                         onClick={() => handleLiningSelect(lining)}
-                                        onMouseEnter={() => prefetchImage(lining.image)}
-                                        className={`relative p-3 rounded-lg transition-all duration-300 ease-out ${
-                                            isSelected ? "shadow-md scale-[1.02]" : "hover:shadow-md hover:scale-[1.02]"
+                                        {...hoverHandlers(() => prefetchImage(lining.image))}
+                                        aria-pressed={isSelected}
+                                        className={`relative p-2 sm:p-3 rounded-lg transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900/40 ${
+                                            isSelected ? "shadow-md scale-[1.02]" : "hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"
                                         }`}
                                     >
                                         {isSelected && <SelectedBadge />}
                                         {isPending("lining", lining.id) && <TileSpinner />}
                                         <div className="flex items-center justify-center w-full overflow-hidden bg-transparent rounded-md aspect-[4/3]">
                                             <LazyImage
-                                                src={lining.fabric?.image || lining.image}
+                                                src={thumbUrl(lining.fabric?.image || lining.image)}
                                                 alt={lining.fabric?.name || "Lining"}
                                                 className="object-contain w-full h-full"
                                                 fallback={<div className="flex items-center justify-center w-full h-full text-xs text-gray-400">{lining.fabric?.name || "Lining"}</div>}
                                             />
                                         </div>
                                         <div className="mt-2">
-                                            <div className="text-xs font-medium leading-tight text-center text-gray-700">{lining.fabric?.name || "Lining"}</div>
+                                            <div className="text-[11px] sm:text-xs font-medium leading-tight text-center text-gray-700 line-clamp-2 lg:line-clamp-none">{lining.fabric?.name || "Lining"}</div>
                                         </div>
                                     </button>
                                 );
