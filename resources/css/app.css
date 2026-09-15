@@ -145,3 +145,9 @@ html { scroll-behavior: smooth; }
 
 /* Script face for fabric names on swatches */
 .font-script { font-family: 'Great Vibes', 'Brush Script MT', cursive; font-weight: 400; letter-spacing: 0.01em; }
+
+/* Horizontal strip scrollbar (real-life pictures) */
+.thin-scrollbar-x { scrollbar-width: thin; scrollbar-color: #9ca3af #e5e7eb; }
+.thin-scrollbar-x::-webkit-scrollbar { height: 6px; }
+.thin-scrollbar-x::-webkit-scrollbar-track { background: #e5e7eb; border-radius: 9999px; }
+.thin-scrollbar-x::-webkit-scrollbar-thumb { background: #9ca3af; border-radius: 9999px; }

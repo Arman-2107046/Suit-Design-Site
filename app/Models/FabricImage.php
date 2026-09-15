@@ -14,7 +14,7 @@ class FabricImage extends Model
 
     public const MAX_PER_KIND = 10;
 
-    protected $fillable = ['fabric_id', 'kind', 'url', 'sort_order'];
+    protected $fillable = ['fabric_id', 'kind', 'url', 'caption', 'sort_order'];
 
     public function fabric(): BelongsTo
     {

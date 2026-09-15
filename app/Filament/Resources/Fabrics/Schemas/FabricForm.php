@@ -31,7 +31,7 @@ class FabricForm
                     ]),
 
                 Section::make('Pictures')
-                    ->description(new HtmlString('Up to 10 per kind. Bulk upload from the Fabrics list with filenames like <code>FPI_Fabric Name_1.png</code> (preview) or <code>FRL_Fabric Name_1.png</code> (real life). Drag to reorder.'))
+                    ->description(new HtmlString('Up to 10 per kind. Bulk upload from the Fabrics list with filenames like <code>FPI_Fabric Name_1.png</code> (preview) or <code>RL_Fabric Name_1.png</code> (real life). Drag to reorder.'))
                     ->components([
                         Repeater::make('images')
                             ->relationship()
@@ -46,7 +46,8 @@ class FabricForm
                             ->columns(4)
                             ->schema([
                                 Select::make('kind')->options(FabricImage::KINDS)->default('preview')->required()->native(false),
-                                TextInput::make('url')->label('Image URL')->url()->required()->columnSpan(3),
+                                TextInput::make('url')->label('Image URL')->url()->required()->columnSpan(2),
+                                TextInput::make('caption')->maxLength(80)->placeholder('2 Piece Suit')->helperText('Shown under real-life pictures.'),
                             ]),
                     ]),
             ]);

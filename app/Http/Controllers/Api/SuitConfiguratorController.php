@@ -135,7 +135,7 @@ class SuitConfiguratorController extends Controller
                     'is_new' => (bool) $fabric->is_new,
                     'info' => $fabric->latestInfo?->toCardArray(),
                     'preview_images' => $fabric->images->where('kind', 'preview')->pluck('url')->values()->all(),
-                    'real_life_images' => $fabric->images->where('kind', 'real_life')->pluck('url')->values()->all(),
+                    'real_life_images' => $fabric->images->where('kind', 'real_life')->map(fn ($i) => ['url' => $i->url, 'caption' => $i->caption])->values()->all(),
 
 
                     /*

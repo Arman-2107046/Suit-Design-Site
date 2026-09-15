@@ -25,10 +25,13 @@ class FabricImagesUploaderTest extends TestCase
         $this->assertTrue($uploader->handle(['name' => 'FPI_Blue Stripe_2.png', 'url' => 'https://cdn/2.png'])['success']);
         $this->assertTrue($uploader->handle(['name' => 'FPI_Blue Stripe_1.png', 'url' => 'https://cdn/1.png'])['success']);
         $this->assertTrue($uploader->handle(['name' => 'FPI_Blue Stripe.png', 'url' => 'https://cdn/3.png'])['success']);
-        $this->assertTrue($uploader->handle(['name' => 'FRL_Blue Stripe_1.png', 'url' => 'https://cdn/real.png'])['success']);
+        $this->assertTrue($uploader->handle(['name' => 'RL_Blue Stripe_1_2 Piece Suit.png', 'url' => 'https://cdn/real.png'])['success']);
+        $this->assertTrue($uploader->handle(['name' => 'FRL_Blue Stripe_Waistcoat.png', 'url' => 'https://cdn/real2.png'])['success']);
 
         $this->assertSame(['https://cdn/1.png', 'https://cdn/2.png', 'https://cdn/3.png'], $fabric->images()->where('kind', 'preview')->pluck('url')->all());
-        $this->assertSame(['https://cdn/real.png'], $fabric->images()->where('kind', 'real_life')->pluck('url')->all());
+        $this->assertSame(['https://cdn/real.png', 'https://cdn/real2.png'], $fabric->realLifeImages()->pluck('url')->all());
+        $this->assertSame(3, $fabric->previewImages()->count());
+        $this->assertSame(['2 Piece Suit', 'Waistcoat'], $fabric->realLifeImages()->pluck('caption')->all());
     }
 
     public function test_a_slot_can_be_replaced_and_the_cap_is_enforced(): void
@@ -55,7 +58,7 @@ class FabricImagesUploaderTest extends TestCase
         $result = $service->process([
             ['name' => 'FPI_Nope_1.png', 'url' => 'https://cdn/x.png'],
             ['name' => 'FPI.png', 'url' => 'https://cdn/y.png'],
-            ['name' => 'FRL_Blue Stripe_1.png', 'url' => 'https://cdn/ok.png'],
+            ['name' => 'RL_Blue Stripe_1.png', 'url' => 'https://cdn/ok.png'],
         ]);
 
         $this->assertFalse($result['success']);

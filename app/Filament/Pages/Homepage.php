@@ -68,9 +68,8 @@ class Homepage extends Page
 
                 Section::make('Section photos')
                     ->description('Each slot shows a neutral panel until a photo is uploaded.')
-                    ->columns(3)
+                    ->columns(2)
                     ->components([
-                        $this->imageField('suits', 'Custom Suits card')->helperText('First card in the fabrics row. Portrait, 4:5.'),
                         $this->imageField('planet', 'Left of "Our planet appreciates it"')->helperText('Tall or square works best.'),
                         $this->imageField('tailor', 'Right of "Looks that last"')->helperText('Tall or square works best.'),
                     ]),

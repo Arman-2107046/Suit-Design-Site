@@ -347,7 +347,11 @@ const Pill = ({ href, children, inertia = false, dark = false }) => {
     );
 };
 
-const Collection = ({ fabrics, fromPrice, image }) => {
+/* Fabrics photographed in real life, one card each; cloths without such pictures are left out. */
+const realLifeOf = (fabric) => (fabric.real_life_images || []).map((p) => (typeof p === "string" ? { url: p, caption: null } : p));
+
+const Collection = ({ fabrics, loaded }) => {
+    const photographed = fabrics.filter((f) => realLifeOf(f).length > 0);
     const rowRef = useRef(null);
     const [edge, setEdge] = useState({ start: true, end: false });
 
@@ -362,6 +366,8 @@ const Collection = ({ fabrics, fromPrice, image }) => {
         window.addEventListener("resize", update);
         return () => window.removeEventListener("resize", update);
     }, [update, fabrics]);
+
+    if (loaded && photographed.length === 0) return null;
 
     const scrollBy = (dir) => {
         const el = rowRef.current;
@@ -406,27 +412,12 @@ const Collection = ({ fabrics, fromPrice, image }) => {
                     onScroll={update}
                     className="flex gap-4 px-5 overflow-x-auto snap-x snap-mandatory no-scrollbar sm:px-8 lg:px-12 sm:gap-5 after:block after:shrink-0 after:w-1"
                 >
-                    <Link href="/design" className={card}>
-                        <Photo src={swatchUrl(image, 900)} alt="Custom suit" tone="stone" className="relative aspect-[4/5] rounded-sm">
-                            <div className="absolute inset-0 transition-colors duration-500 bg-black/0 group-hover:bg-black/10" />
-                            <div className="absolute inset-x-0 bottom-0 p-5">
-                                <span className="inline-flex items-center gap-2 px-4 py-2 text-xs font-medium text-gray-900 rounded-full bg-white/95">
-                                    Design yours <ArrowUpRight className="w-3.5 h-3.5" />
-                                </span>
-                            </div>
-                        </Photo>
-                        <div className="flex items-baseline justify-between mt-3">
-                            <span className="text-[15px] font-medium text-gray-900">Custom Suits</span>
-                            {fromPrice != null && <span className="text-sm text-gray-500">from {money(fromPrice)}</span>}
-                        </div>
-                    </Link>
-
-                    {fabrics.map((fabric) => (
+                    {photographed.map((fabric) => (
                         <Link key={fabric.id} href={`/design?fabric=${fabric.id}`} className={card}>
                             <div className="relative overflow-hidden aspect-[4/5] rounded-sm bg-[#efece6]">
                                 <img
-                                    src={swatchUrl(fabric.image, 720)}
-                                    alt={`${fabric.name} fabric`}
+                                    src={swatchUrl(realLifeOf(fabric)[0].url, 720)}
+                                    alt={realLifeOf(fabric)[0].caption || `${fabric.name} suit`}
                                     loading="lazy"
                                     className="absolute inset-0 object-cover w-full h-full transition-transform duration-[1200ms] ease-out group-hover:scale-110"
                                 />
@@ -444,7 +435,7 @@ const Collection = ({ fabrics, fromPrice, image }) => {
                         </Link>
                     ))}
 
-                    {fabrics.length === 0 &&
+                    {!loaded &&
                         [0, 1, 2, 3].map((i) => (
                             <div key={i} className={card} aria-hidden="true">
                                 <div className="aspect-[4/5] rounded-sm bg-[#f1eee9] animate-pulse" />
@@ -839,11 +830,7 @@ const Footer = ({ socials, paymentLogos, shippingLogos }) => {
                 </div>
             )}
 
-            <p className="px-5 mx-auto mt-16 max-w-[1600px] sm:px-8 lg:px-12 text-[17vw] lg:text-[11rem] font-light leading-none tracking-tight text-gray-100 select-none pointer-events-none" aria-hidden="true">
-                Custom Tailor
-            </p>
-
-            <div className="bg-[#f7f6f3]">
+            <div className="mt-14 bg-[#f7f6f3]">
                 <div className="flex flex-col gap-2 px-5 py-5 mx-auto text-xs text-gray-500 max-w-[1600px] sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-12">
                     <span>Copyright {new Date().getFullYear()} Custom Tailor</span>
                     <span>
@@ -863,13 +850,15 @@ export default function Home({ homepage }) {
     const socials = homepage?.socials ?? {};
     const images = homepage?.images ?? {};
     const [fabrics, setFabrics] = useState([]);
+    const [loaded, setLoaded] = useState(false);
 
     useEffect(() => {
         let alive = true;
         fetch("/api/configurator", { headers: { Accept: "application/json" } })
             .then((r) => (r.ok ? r.json() : null))
             .then((payload) => alive && payload?.success && setFabrics(payload.data || []))
-            .catch(() => {});
+            .catch(() => {})
+            .finally(() => alive && setLoaded(true));
         return () => {
             alive = false;
         };
@@ -886,7 +875,6 @@ export default function Home({ homepage }) {
         "Perfect fit guarantee",
         "Saved to your account",
     ];
-    const fromPrice = fabrics.length ? Math.min(...fabrics.map((f) => Number(f.price) || 0)) : null;
 
     return (
         <div className="min-h-screen text-gray-900 bg-white">
@@ -896,7 +884,7 @@ export default function Home({ homepage }) {
             <main>
                 <Hero image={images.hero} texture={featured?.image} />
                 <Marquee items={marquee} />
-                <Collection fabrics={fabrics} fromPrice={fromPrice} image={images.suits} />
+                <Collection fabrics={fabrics} loaded={loaded} />
                 <Details fabric={featured} />
                 <Designer image={images.designer} video={homepage?.video} />
                 <Process />

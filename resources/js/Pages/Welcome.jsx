@@ -836,8 +836,8 @@ const FabricOverlay = ({ fabric, fabrics, onClose, onNavigate, onChoose }) => {
     const [note, setNote] = useState(null);
 
     const previews = fabric.preview_images || [];
-    const realLife = fabric.real_life_images || [];
-    const pictures = kind === "real_life" && realLife.length ? realLife : previews;
+    const realLife = (fabric.real_life_images || []).map((p) => (typeof p === "string" ? { url: p, caption: null } : p));
+    const pictures = previews;
     const info = fabric.info || null;
     const badges = info?.badges || [];
     const columns = (info?.columns || []).filter((c) => c.length > 0);
@@ -874,7 +874,7 @@ const FabricOverlay = ({ fabric, fabrics, onClose, onNavigate, onChoose }) => {
                 <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/40 pointer-events-none" />
                 {pictures.length === 0 && (
                     <p className="absolute inset-x-0 top-[28%] text-center text-[11px] font-semibold tracking-[0.24em] text-white/30 uppercase pointer-events-none">
-                        {kind === "real_life" ? "No real life pictures yet" : "No preview pictures yet"}
+                        No preview pictures yet
                     </p>
                 )}
             </div>
@@ -913,24 +913,39 @@ const FabricOverlay = ({ fabric, fabrics, onClose, onNavigate, onChoose }) => {
                 <div className="w-full max-w-4xl max-h-[62vh] overflow-y-auto thin-scrollbar bg-white rounded-2xl shadow-2xl pointer-events-auto animate-slide-up p-6 sm:p-8">
                     <div className="flex items-start justify-between gap-6">
                         <div className="min-w-0">
-                            <h2 className="text-2xl font-medium tracking-tight sm:text-3xl">{info?.title || fabric.name}<span className="text-gray-400">.</span></h2>
-                            {details && info?.description && <p className="mt-3 text-[15px] leading-relaxed text-gray-600 animate-fade-in">{info.description}</p>}
+                            <h2 className="text-2xl font-medium tracking-tight sm:text-3xl">{kind === "real_life" ? fabric.name : info?.title || fabric.name}<span className="text-gray-400">.</span></h2>
+                            {kind !== "real_life" && details && info?.description && <p className="mt-3 text-[15px] leading-relaxed text-gray-600 animate-fade-in">{info.description}</p>}
                         </div>
                         <div className="flex gap-5 shrink-0 text-[11px] text-gray-500">
                             {hasDetails && (
-                                <button type="button" onClick={() => setDetails((v) => !v)} className={`flex flex-col items-center gap-1 w-14 transition-colors hover:text-gray-900 ${details ? "text-gray-900 font-medium" : ""}`}>
-                                    <Info className="w-5 h-5" strokeWidth={1.5} /> {details ? "hide details" : "More info"}
+                                <button type="button" onClick={() => { if (kind === "real_life") { setKind("preview"); setDetails(true); } else setDetails((v) => !v); }} className={`flex flex-col items-center gap-1 w-14 transition-colors hover:text-gray-900 ${details && kind !== "real_life" ? "text-gray-900 font-medium" : ""}`}>
+                                    <Info className="w-5 h-5" strokeWidth={1.5} /> {details && kind !== "real_life" ? "hide details" : "More info"}
                                 </button>
                             )}
                             {realLife.length > 0 && (
-                                <button type="button" onClick={() => { setKind((k) => (k === "real_life" ? "preview" : "real_life")); setIndex(0); }} className={`flex flex-col items-center gap-1 w-14 transition-colors hover:text-gray-900 ${kind === "real_life" ? "text-gray-900 font-medium" : ""}`}>
-                                    <Images className="w-5 h-5" strokeWidth={1.5} /> {kind === "real_life" ? "Fabric pictures" : "Real life pictures"}
+                                <button type="button" onClick={() => { setKind((k) => (k === "real_life" ? "preview" : "real_life")); }} className={`flex flex-col items-center gap-1 w-14 transition-colors hover:text-gray-900 ${kind === "real_life" ? "text-gray-900 font-medium" : ""}`}>
+                                    <Images className="w-5 h-5" strokeWidth={1.5} /> Real life pictures
                                 </button>
                             )}
                         </div>
                     </div>
 
-                    {badges.length > 0 && (
+                    {kind === "real_life" && (
+                        <div className="mt-6 overflow-x-auto overscroll-x-contain snap-x snap-mandatory thin-scrollbar-x animate-fade-in">
+                            <ul className="flex gap-5 pb-4 w-max">
+                                {realLife.map((picture, i) => (
+                                    <li key={i} className="w-40 shrink-0 snap-start sm:w-44">
+                                        <div className="relative overflow-hidden aspect-[3/4] bg-[#efece6]">
+                                            <img src={thumbUrl(picture.url)} alt={picture.caption || ""} loading="lazy" className="absolute inset-0 object-cover w-full h-full transition-transform duration-700 hover:scale-105" />
+                                        </div>
+                                        {picture.caption && <p className="mt-3 text-sm text-gray-600">{picture.caption}</p>}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
+                    {kind !== "real_life" && badges.length > 0 && (
                         <ul className="flex flex-wrap justify-start gap-x-8 gap-y-5 mt-7 sm:gap-x-10">
                             {badges.map((badge, i) => (
                                 <li key={i} className="flex flex-col items-center gap-2 text-center w-20 group/badge">
@@ -943,7 +958,7 @@ const FabricOverlay = ({ fabric, fabrics, onClose, onNavigate, onChoose }) => {
                         </ul>
                     )}
 
-                    {details && columns.length > 0 && (
+                    {kind !== "real_life" && details && columns.length > 0 && (
                         <div className="grid gap-x-8 gap-y-6 pt-6 mt-8 text-sm border-t border-gray-100 sm:grid-cols-2 lg:grid-cols-4 animate-fade-in">
                             {columns.map((entries, c) => (
                                 <dl key={c} className="space-y-2.5">
@@ -970,12 +985,14 @@ const FabricOverlay = ({ fabric, fabrics, onClose, onNavigate, onChoose }) => {
                         </div>
                     )}
 
+                    {kind !== "real_life" && (
                     <div className="flex flex-wrap items-center justify-between gap-3 mt-8">
                         <span className="text-sm text-gray-500">From ${Math.round(Number(fabric.price) || 0)} · tailored in about 3 weeks</span>
                         <button type="button" onClick={() => { onChoose(fabric); onClose(); }} className="btn-ink bg-gray-900 text-white hover:bg-gray-700">
                             Design in {fabric.name} <ArrowRight className="w-4 h-4" />
                         </button>
                     </div>
+                    )}
                 </div>
             </div>
         </div>
@@ -1122,7 +1139,8 @@ function stageAspectOf(layers) {
  * scrollable area that starts centred and can be dragged with the mouse
  * (touch scrolls natively). Used by the lightbox.
  */
-const SuitStage = memo(function SuitStage({ layers, dimmed, zoom = 1 }) {
+/* `fill` > 1 draws the suit that much larger than fits; the renders carry generous transparent margins, so a little overscan reads as "bigger", not cropped. */
+const SuitStage = memo(function SuitStage({ layers, dimmed, zoom = 1, fill = 1 }) {
     const wrapRef = useRef(null);
     const canvasRef = useRef(null);
     const dragRef = useRef(null);
@@ -1133,9 +1151,9 @@ const SuitStage = memo(function SuitStage({ layers, dimmed, zoom = 1 }) {
 
     const box = useMemo(() => {
         if (!area.w || !area.h) return { w: 0, h: 0 };
-        const w = Math.min(area.w, area.h * aspect) * zoom;
+        const w = Math.min(area.w, area.h * aspect) * zoom * fill;
         return { w: Math.floor(w), h: Math.floor(w / aspect) };
-    }, [area, aspect, zoom]);
+    }, [area, aspect, zoom, fill]);
 
     /* Start a zoomed view centred on the suit. */
     useLayoutEffect(() => {
@@ -1351,6 +1369,13 @@ const SuitDesigner = () => {
     const [showLiningPanel, setShowLiningPanel] = useState(false);
     const [showLightbox, setShowLightbox] = useState(false);
     const [infoFabricId, setInfoFabricId] = useState(null);
+    const [isWide, setIsWide] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches);
+    useEffect(() => {
+        const mq = window.matchMedia("(min-width: 1024px)");
+        const onChange = (e) => setIsWide(e.matches);
+        mq.addEventListener("change", onChange);
+        return () => mq.removeEventListener("change", onChange);
+    }, []);
     const [stageNotice, setStageNotice] = useState(null);
     const stageNoticeRef = useRef(null);
     // true once the lightbox's sharper layers are decoded; until then it shows the on-screen ones, enlarged.
@@ -1706,9 +1731,23 @@ const SuitDesigner = () => {
                 </div>
             </header>
 
+            {/* FABRIC OVERLAY — pictures and details for one cloth, over the whole right side */}
+            {infoFabricId != null && fabrics.find((f) => f.id === infoFabricId) && (
+                <FabricOverlay
+                    fabric={fabrics.find((f) => f.id === infoFabricId)}
+                    fabrics={fabrics}
+                    onClose={() => setInfoFabricId(null)}
+                    onNavigate={(dir) => {
+                        const i = fabrics.findIndex((f) => f.id === infoFabricId);
+                        setInfoFabricId(fabrics[(i + dir + fabrics.length) % fabrics.length].id);
+                    }}
+                    onChoose={(fabric) => { changeFabric(fabric); }}
+                />
+            )}
+
             <div className="relative flex flex-1 min-h-0 pt-12 lg:pt-0">
-                <div className="relative flex-1 min-w-0 min-h-0 p-2 sm:p-3 lg:px-6 lg:pt-6 lg:pb-12">
-                <SuitStage layers={layers} dimmed={Boolean(pending)} />
+                <div className="relative flex-1 min-w-0 min-h-0 p-2 sm:p-3 lg:px-6 lg:pt-3 lg:pb-10">
+                <SuitStage layers={layers} dimmed={Boolean(pending)} fill={isWide ? 1.14 : 1} />
 
                 {fabrics.length > 1 && (
                     <>
@@ -1725,20 +1764,6 @@ const SuitDesigner = () => {
                     <div role="status" className="absolute z-30 px-4 py-2 text-sm text-white -translate-x-1/2 bg-gray-900 rounded-full shadow-lg top-3 left-1/2 animate-slide-down">
                         {stageNotice}
                     </div>
-                )}
-
-                {/* FABRIC OVERLAY — pictures and details for one cloth, over the stage only */}
-                {infoFabricId != null && fabrics.find((f) => f.id === infoFabricId) && (
-                    <FabricOverlay
-                        fabric={fabrics.find((f) => f.id === infoFabricId)}
-                        fabrics={fabrics}
-                        onClose={() => setInfoFabricId(null)}
-                        onNavigate={(dir) => {
-                            const i = fabrics.findIndex((f) => f.id === infoFabricId);
-                            setInfoFabricId(fabrics[(i + dir + fabrics.length) % fabrics.length].id);
-                        }}
-                        onChoose={(fabric) => { changeFabric(fabric); }}
-                    />
                 )}
 
                 <button

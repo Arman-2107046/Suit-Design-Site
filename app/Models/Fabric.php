@@ -33,6 +33,16 @@ class Fabric extends Model
         return $this->hasMany(FabricImage::class)->orderBy('sort_order')->orderBy('id');
     }
 
+    public function previewImages(): HasMany
+    {
+        return $this->images()->where('kind', 'preview');
+    }
+
+    public function realLifeImages(): HasMany
+    {
+        return $this->images()->where('kind', 'real_life');
+    }
+
     public function infos(): HasMany
     {
         return $this->hasMany(FabricInfo::class)->latest('updated_at');

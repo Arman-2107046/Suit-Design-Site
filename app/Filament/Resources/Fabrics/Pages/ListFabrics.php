@@ -40,7 +40,7 @@ class ListFabrics extends ListRecords
                     'uploadPreset' => env('CLOUDINARY_UPLOAD_PRESET', ''),
                     'title' => 'Upload fabric pictures',
                     'subtitle' => 'Preview and real-life pictures, up to 10 of each per fabric',
-                    'filenameHint' => 'FPI_Blue Stripe_1.png · FRL_Blue Stripe_1.png',
+                    'filenameHint' => 'FPI_Blue Stripe_1.png · RL_Blue Stripe_2 Piece Suit.png',
                     'wireMethod' => 'processPictureUploads',
                 ])),
 
@@ -154,7 +154,7 @@ class ListFabrics extends ListRecords
             ->send();
     }
 
-    /* FPI_/FRL_ pictures go through the shared uploader so the rules live in one place. */
+    /* FPI_/RL_ pictures go through the shared uploader so the rules live in one place. */
     public function processPictureUploads(array $files): void
     {
         $result = app(BulkUploadService::class)->process($files);

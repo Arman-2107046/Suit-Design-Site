@@ -36,6 +36,7 @@ class BulkUploadService
 
             'FAB' => 1,
             'FPI' => 1,
+            'RL' => 1,
             'FRL' => 1,
 
             'LT' => 2,
@@ -136,7 +137,7 @@ class BulkUploadService
                     app(FabricsUploader::class)
                         ->handle($file),
 
-                'FPI', 'FRL' =>
+                'FPI', 'RL', 'FRL' =>
                     app(FabricImagesUploader::class)
                         ->handle($file),
 

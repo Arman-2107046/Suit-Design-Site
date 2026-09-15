@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class HomepageSetting extends Model
 {
-    public const IMAGES = ['hero', 'suits', 'designer', 'planet', 'tailor'];
+    public const IMAGES = ['hero', 'designer', 'planet', 'tailor'];
 
     public const SOCIALS = ['instagram', 'facebook', 'x', 'pinterest', 'tiktok'];
 

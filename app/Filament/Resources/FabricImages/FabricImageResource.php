@@ -48,8 +48,12 @@ class FabricImageResource extends Resource
                 ->label('Image URL')
                 ->url()
                 ->required()
-                ->helperText('Bulk upload from Fabrics → Upload pictures uses FPI_ / FRL_ filenames.')
+                ->helperText('Bulk upload from Fabrics → Upload pictures: FPI_Fabric Name.png for previews, RL_Fabric Name.png for real-life pictures.')
                 ->columnSpanFull(),
+            TextInput::make('caption')
+                ->maxLength(80)
+                ->placeholder('2 Piece Suit')
+                ->helperText('Shown under real-life pictures; ignored for previews.'),
             TextInput::make('sort_order')
                 ->label('Position')
                 ->numeric()
@@ -74,6 +78,7 @@ class FabricImageResource extends Resource
                 TextColumn::make('fabric.name')->label('Fabric')->searchable()->sortable(),
                 TextColumn::make('kind')->badge()->formatStateUsing(fn (string $state) => FabricImage::KINDS[$state] ?? $state)
                     ->color(fn (string $state) => $state === 'real_life' ? 'info' : 'gray'),
+                TextColumn::make('caption')->placeholder('—')->searchable(),
                 TextColumn::make('sort_order')->label('#')->sortable()->alignCenter(),
                 TextColumn::make('url')->label('URL')->limit(40)->copyable()->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('created_at')->since()->sortable()->toggleable(isToggledHiddenByDefault: true),
