@@ -129,3 +129,19 @@ html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) {
   .loading-sweep { animation: none; width: 100%; opacity: 0.4; }
 }
+
+/* Body profile sliders: hairline track, large ink thumb */
+.slider {
+  -webkit-appearance: none; appearance: none; height: 1px; background: #d1d5db; outline: none; cursor: pointer;
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 34px; height: 34px; border-radius: 9999px; background: #111; border: 0;
+  box-shadow: 0 6px 16px -6px rgba(0, 0, 0, 0.5); transition: transform 0.15s;
+}
+.slider::-webkit-slider-thumb:active { transform: scale(1.08); }
+.slider::-moz-range-thumb { width: 34px; height: 34px; border-radius: 9999px; background: #111; border: 0; box-shadow: 0 6px 16px -6px rgba(0, 0, 0, 0.5); }
+.slider::-moz-range-track { height: 1px; background: #d1d5db; }
+.slider:focus-visible::-webkit-slider-thumb { outline: 2px solid rgba(17, 17, 17, 0.35); outline-offset: 3px; }
+
+/* Script face for fabric names on swatches */
+.font-script { font-family: 'Great Vibes', 'Brush Script MT', cursive; font-weight: 400; letter-spacing: 0.01em; }

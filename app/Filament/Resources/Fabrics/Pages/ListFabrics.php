@@ -6,6 +6,7 @@ use App\Filament\Concerns\BustsCacheOnReorder;
 use App\Filament\Imports\FabricImporter;
 use App\Filament\Resources\Fabrics\FabricResource;
 use App\Models\Fabric;
+use App\Services\BulkUploadService;
 use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Actions\ImportAction;
@@ -27,6 +28,21 @@ class ListFabrics extends ListRecords
             ImportAction::make()
                 ->importer(FabricImporter::class)
                 ->label('Import Fabrics'),
+
+            Action::make('bulkUploadPictures')
+                ->label('Upload pictures')
+                ->icon('heroicon-o-photo')
+                ->modalWidth('lg')
+                ->modalSubmitAction(false)
+                ->modalCancelActionLabel('Close')
+                ->modalContent(fn () => view('filament.modals.bulk-upload-images', [
+                    'cloudName' => $this->getCloudinaryCloudName(),
+                    'uploadPreset' => env('CLOUDINARY_UPLOAD_PRESET', ''),
+                    'title' => 'Upload fabric pictures',
+                    'subtitle' => 'Preview and real-life pictures, up to 10 of each per fabric',
+                    'filenameHint' => 'FPI_Blue Stripe_1.png · FRL_Blue Stripe_1.png',
+                    'wireMethod' => 'processPictureUploads',
+                ])),
 
             Action::make('bulkUploadFabrics')
                 ->label('Bulk Upload')
@@ -135,6 +151,23 @@ class ListFabrics extends ListRecords
             )
             ->success(empty($failed))
             ->warning(! empty($failed))
+            ->send();
+    }
+
+    /* FPI_/FRL_ pictures go through the shared uploader so the rules live in one place. */
+    public function processPictureUploads(array $files): void
+    {
+        $result = app(BulkUploadService::class)->process($files);
+
+        Notification::make()
+            ->title($result['success'] ? 'Pictures uploaded' : 'Some pictures failed')
+            ->body(
+                $result['success']
+                    ? count($result['results']) . ' picture(s) added.'
+                    : collect($result['failed'])->pluck('message')->implode(' · ')
+            )
+            ->success($result['success'])
+            ->warning(! $result['success'])
             ->send();
     }
 

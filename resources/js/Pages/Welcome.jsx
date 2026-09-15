@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, memo } from "react";
 import { Head, Link } from "@inertiajs/react";
-import { Loader2, Layers, Scissors, Palette, Menu, X, RotateCcw, Maximize2, ArrowLeft } from "lucide-react";
+import { addToCart, cartCount, summarizeDesign, useCart } from "@/lib/store";
+import { Loader2, Layers, Scissors, Palette, Menu, X, RotateCcw, Maximize2, ArrowLeft, ArrowRight, ShoppingBag, Check, Info, Images } from "lucide-react";
 
 const STORAGE_KEY = "custom-tailor.design.v1";
 const CANVAS_TIMEOUT_MS = 8000;
@@ -749,26 +750,237 @@ const tileClass = (isSelected, width = TILE_W) =>
 
 const hoverHandlers = (onHover) => (onHover ? { onMouseEnter: onHover, onFocus: onHover, onPointerDown: onHover } : {});
 
-const FabricOptionTile = memo(function FabricOptionTile({ isSelected, onClick, onHover, image, label, price, isLoading }) {
+/*
+ * Swatch with the name set in script over the cloth. On hover (or focus) the
+ * script fades to a plain name and a "more info" link, like a label turning
+ * over. `onInfo` opens the fabric overlay; tiles without it (linings) keep
+ * the caption underneath.
+ */
+const FabricOptionTile = memo(function FabricOptionTile({ isSelected, onClick, onHover, onInfo, image, label, price, isNew = false, isLoading }) {
+    const overlay = Boolean(onInfo);
     return (
-        <button type="button" onClick={onClick} {...hoverHandlers(onHover)} className={tileClass(isSelected, "w-full")} aria-pressed={isSelected}>
+        <div className={`${tileClass(isSelected, "w-full")} group`} {...hoverHandlers(onHover)}>
             {isSelected && <SelectedBadge />}
             {isLoading && <TileSpinner />}
-            <div className="w-full aspect-[4/3] flex items-center justify-center bg-transparent rounded-md overflow-hidden">
-                <SwatchImage
-                    src={thumbUrl(image)}
-                    alt={label}
-                    className="object-contain w-full h-full"
-                    fallback={<div className="flex items-center justify-center w-full h-full text-xs text-gray-400">{label || "No image"}</div>}
-                />
-            </div>
-            <div className="mt-2">
-                <div className="text-[11px] lg:text-xs font-medium leading-tight text-center text-gray-700 line-clamp-2 lg:line-clamp-none">{label}</div>
-                {price && <div className="text-[11px] lg:text-xs text-center text-gray-500 mt-0.5">${price}</div>}
-            </div>
-        </button>
+            <button type="button" onClick={onClick} aria-pressed={isSelected} aria-label={label} className="block w-full focus:outline-none">
+                <div className={`relative w-full flex items-center justify-center bg-[#efece6] rounded-md overflow-hidden ${overlay ? "aspect-[4/3]" : "aspect-[4/3]"}`}>
+                    <SwatchImage
+                        src={thumbUrl(image)}
+                        alt=""
+                        className="object-cover w-full h-full"
+                        fallback={<div className="flex items-center justify-center w-full h-full text-xs text-gray-400">{label || "No image"}</div>}
+                    />
+                    {overlay && (
+                        <>
+                            {isNew && (
+                                <span className="absolute top-0 left-0 px-2 py-0.5 text-[9px] font-bold tracking-widest text-white uppercase bg-red-600 rounded-br-md">
+                                    New
+                                </span>
+                            )}
+                            <span className="absolute inset-0 bg-black/25 transition-opacity duration-300 group-hover:opacity-0 group-focus-within:opacity-0" />
+                            <span className="absolute inset-0 flex items-center justify-center px-2 text-center text-white font-script text-[24px] lg:text-[28px] leading-[0.95] drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)] transition-all duration-300 group-hover:opacity-0 group-hover:translate-y-1 group-focus-within:opacity-0">
+                                {label}
+                            </span>
+                        </>
+                    )}
+                </div>
+                {!overlay && (
+                    <div className="mt-2">
+                        <div className="text-[11px] lg:text-xs font-medium leading-tight text-center text-gray-700 line-clamp-2 lg:line-clamp-none">{label}</div>
+                        {price && <div className="text-[11px] lg:text-xs text-center text-gray-500 mt-0.5">${price}</div>}
+                    </div>
+                )}
+            </button>
+            {overlay && (
+                <div className="absolute inset-x-2 lg:inset-x-3 bottom-2 lg:bottom-3 flex flex-col items-center gap-1 px-2 py-2 rounded-md bg-gray-900/85 backdrop-blur-sm text-white opacity-0 translate-y-2 transition-all duration-300 group-hover:opacity-100 group-hover:translate-y-0 group-focus-within:opacity-100 group-focus-within:translate-y-0 pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto">
+                    <span className="text-xs font-medium leading-tight text-center line-clamp-1">{label}{price ? ` · $${Math.round(Number(price))}` : ""}</span>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); onInfo(); }} className="text-[11px] text-white/80 underline underline-offset-2 hover:text-white">
+                        more info
+                    </button>
+                </div>
+            )}
+        </div>
     );
 });
+
+/* ------------------------------------------------------------------ */
+/*  Fabric overlay — pictures, badges, and the info card                */
+/* ------------------------------------------------------------------ */
+
+/* Large reading panel for a detail's bracketed note: "Weave" / "Twill" / the explanation. */
+const NotePanel = ({ note, onClose }) => {
+    useEffect(() => {
+        const onKey = (e) => e.key === "Escape" && (e.stopPropagation(), onClose());
+        window.addEventListener("keydown", onKey, true);
+        return () => window.removeEventListener("keydown", onKey, true);
+    }, [onClose]);
+
+    return (
+        <div className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={(e) => e.target === e.currentTarget && onClose()}>
+            <div role="dialog" aria-modal="true" aria-labelledby="note-title" className="relative w-full max-w-2xl p-8 bg-white shadow-2xl rounded-2xl sm:p-10 animate-pop">
+                <button type="button" onClick={onClose} aria-label="Close" className="absolute p-2 text-gray-500 transition-colors rounded-full top-4 right-4 hover:bg-gray-100 hover:text-gray-900">
+                    <X className="w-5 h-5" strokeWidth={1.5} />
+                </button>
+                <p id="note-title" className="text-2xl font-light tracking-tight text-gray-900 sm:text-3xl">{note.label}</p>
+                <p className="mt-4 text-xl font-medium tracking-tight text-gray-900">{note.value}</p>
+                <p className="mt-4 text-[15px] leading-relaxed text-gray-600 whitespace-pre-line">{note.note}</p>
+            </div>
+        </div>
+    );
+};
+
+const FabricOverlay = ({ fabric, fabrics, onClose, onNavigate, onChoose }) => {
+    const [kind, setKind] = useState("preview");
+    const [index, setIndex] = useState(0);
+    const [details, setDetails] = useState(false);
+    const [note, setNote] = useState(null);
+
+    const previews = fabric.preview_images || [];
+    const realLife = fabric.real_life_images || [];
+    const pictures = kind === "real_life" && realLife.length ? realLife : previews;
+    const info = fabric.info || null;
+    const badges = info?.badges || [];
+    const columns = (info?.columns || []).filter((c) => c.length > 0);
+    const hasDetails = Boolean(info?.description) || columns.length > 0;
+    const position = fabrics.findIndex((f) => f.id === fabric.id);
+
+    useEffect(() => { setIndex(0); setKind("preview"); setDetails(false); setNote(null); }, [fabric.id]);
+    useEffect(() => {
+        const onKey = (e) => {
+            if (e.key === "Escape") onClose();
+            if (!pictures.length) return;
+            if (e.key === "ArrowRight") setIndex((i) => (i + 1) % pictures.length);
+            if (e.key === "ArrowLeft") setIndex((i) => (i - 1 + pictures.length) % pictures.length);
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [pictures.length, onClose]);
+
+    const step = (dir) => pictures.length && setIndex((i) => (i + dir + pictures.length) % pictures.length);
+
+    return (
+        <div role="dialog" aria-label={`${fabric.name} fabric`} className="fixed inset-0 z-[40] bg-[#0b0b0b] animate-fade-in lg:absolute" onClick={(e) => e.target === e.currentTarget && onClose()}>
+            {/* Picture */}
+            <div className="absolute inset-0">
+                {pictures.map((src, i) => (
+                    <img
+                        key={src}
+                        src={hiresUrl(src)}
+                        alt=""
+                        className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${i === index ? "opacity-100" : "opacity-0"}`}
+                        draggable={false}
+                    />
+                ))}
+                <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/40 pointer-events-none" />
+                {pictures.length === 0 && (
+                    <p className="absolute inset-x-0 top-[28%] text-center text-[11px] font-semibold tracking-[0.24em] text-white/30 uppercase pointer-events-none">
+                        {kind === "real_life" ? "No real life pictures yet" : "No preview pictures yet"}
+                    </p>
+                )}
+            </div>
+
+            {/* Chrome */}
+            <button type="button" onClick={onClose} aria-label="Close" className="absolute z-10 flex items-center justify-center w-11 h-11 text-white transition-colors rounded-full top-4 right-4 hover:bg-white/15">
+                <X className="w-6 h-6" strokeWidth={1.5} />
+            </button>
+            {pictures.length > 1 && (
+                <>
+                    <button type="button" onClick={() => step(-1)} aria-label="Previous picture" className="absolute z-10 flex items-center justify-center w-11 h-11 text-white -translate-y-1/2 border rounded-full left-4 top-[38%] border-white/60 bg-black/20 backdrop-blur hover:bg-white hover:text-gray-900 transition-colors">
+                        <ArrowLeft className="w-4 h-4" />
+                    </button>
+                    <button type="button" onClick={() => step(1)} aria-label="Next picture" className="absolute z-10 flex items-center justify-center w-11 h-11 text-white -translate-y-1/2 border rounded-full right-4 top-[38%] border-white/60 bg-black/20 backdrop-blur hover:bg-white hover:text-gray-900 transition-colors">
+                        <ArrowRight className="w-4 h-4" />
+                    </button>
+                    <div className="absolute z-10 flex gap-1.5 -translate-x-1/2 left-1/2 top-4">
+                        {pictures.map((_, i) => (
+                            <button key={i} type="button" onClick={() => setIndex(i)} aria-label={`Picture ${i + 1}`} className={`h-1 rounded-full transition-all ${i === index ? "w-6 bg-white" : "w-2 bg-white/50"}`} />
+                        ))}
+                    </div>
+                </>
+            )}
+            {fabrics.length > 1 && (
+                <div className="absolute z-10 flex items-center gap-2 text-white/80 top-5 left-5 text-[11px] font-semibold tracking-[0.2em] uppercase">
+                    <button type="button" onClick={() => onNavigate(-1)} className="hover:text-white">‹</button>
+                    <span>{position + 1} / {fabrics.length}</span>
+                    <button type="button" onClick={() => onNavigate(1)} className="hover:text-white">›</button>
+                </div>
+            )}
+
+            {note && <NotePanel note={note} onClose={() => setNote(null)} />}
+
+            {/* Card */}
+            <div className="absolute inset-x-0 bottom-0 z-10 flex justify-center px-3 pb-3 sm:px-6 sm:pb-6 pointer-events-none">
+                <div className="w-full max-w-4xl max-h-[62vh] overflow-y-auto thin-scrollbar bg-white rounded-2xl shadow-2xl pointer-events-auto animate-slide-up p-6 sm:p-8">
+                    <div className="flex items-start justify-between gap-6">
+                        <div className="min-w-0">
+                            <h2 className="text-2xl font-medium tracking-tight sm:text-3xl">{info?.title || fabric.name}<span className="text-gray-400">.</span></h2>
+                            {details && info?.description && <p className="mt-3 text-[15px] leading-relaxed text-gray-600 animate-fade-in">{info.description}</p>}
+                        </div>
+                        <div className="flex gap-5 shrink-0 text-[11px] text-gray-500">
+                            {hasDetails && (
+                                <button type="button" onClick={() => setDetails((v) => !v)} className={`flex flex-col items-center gap-1 w-14 transition-colors hover:text-gray-900 ${details ? "text-gray-900 font-medium" : ""}`}>
+                                    <Info className="w-5 h-5" strokeWidth={1.5} /> {details ? "hide details" : "More info"}
+                                </button>
+                            )}
+                            {realLife.length > 0 && (
+                                <button type="button" onClick={() => { setKind((k) => (k === "real_life" ? "preview" : "real_life")); setIndex(0); }} className={`flex flex-col items-center gap-1 w-14 transition-colors hover:text-gray-900 ${kind === "real_life" ? "text-gray-900 font-medium" : ""}`}>
+                                    <Images className="w-5 h-5" strokeWidth={1.5} /> {kind === "real_life" ? "Fabric pictures" : "Real life pictures"}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {badges.length > 0 && (
+                        <ul className="flex flex-wrap justify-start gap-x-8 gap-y-5 mt-7 sm:gap-x-10">
+                            {badges.map((badge, i) => (
+                                <li key={i} className="flex flex-col items-center gap-2 text-center w-20 group/badge">
+                                    <span className="flex items-center justify-center w-12 h-12 transition-transform duration-300 group-hover/badge:-translate-y-0.5">
+                                        {badge.icon && <img src={thumbUrl(badge.icon)} alt="" className="object-contain w-10 h-10" style={{ mixBlendMode: "multiply" }} loading="lazy" />}
+                                    </span>
+                                    <span className="text-xs text-gray-700 sm:text-[13px] leading-tight">{badge.name}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+
+                    {details && columns.length > 0 && (
+                        <div className="grid gap-x-8 gap-y-6 pt-6 mt-8 text-sm border-t border-gray-100 sm:grid-cols-2 lg:grid-cols-4 animate-fade-in">
+                            {columns.map((entries, c) => (
+                                <dl key={c} className="space-y-2.5">
+                                    {entries.map((entry, i) => (
+                                        <div key={i}>
+                                            <dt className="inline font-semibold text-gray-900">{entry.label}: </dt>
+                                            <dd className="inline text-gray-600">
+                                                {entry.value}
+                                                {entry.note && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setNote(entry)}
+                                                        aria-label={`More about ${entry.label}`}
+                                                        className="inline-flex items-center justify-center w-4 h-4 ml-1.5 text-[10px] font-bold leading-none text-white align-middle bg-gray-900 rounded-full transition-transform hover:scale-110"
+                                                    >
+                                                        i
+                                                    </button>
+                                                )}
+                                            </dd>
+                                        </div>
+                                    ))}
+                                </dl>
+                            ))}
+                        </div>
+                    )}
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 mt-8">
+                        <span className="text-sm text-gray-500">From ${Math.round(Number(fabric.price) || 0)} · tailored in about 3 weeks</span>
+                        <button type="button" onClick={() => { onChoose(fabric); onClose(); }} className="btn-ink bg-gray-900 text-white hover:bg-gray-700">
+                            Design in {fabric.name} <ArrowRight className="w-4 h-4" />
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const StyleOptionTile = memo(function StyleOptionTile({ isSelected, onClick, onHover, image, label, aspect = "aspect-[3/4]", isLoading }) {
     return (
@@ -1072,9 +1284,9 @@ const PENDING_LABELS = {
 };
 
 const TAB_COPY = {
-    fabric: { title: "Choose your fabric", subtitle: "Your design carries over to every fabric" },
-    style: { title: "Customize your style", subtitle: "Personalize the cut and details" },
-    accents: { title: "Accents & lining", subtitle: "Add the finishing touches" },
+    fabric: { title: "Fabric" },
+    style: { title: "Style" },
+    accents: { title: "Accents & lining" },
 };
 
 /* ------------------------------------------------------------------ */
@@ -1131,10 +1343,14 @@ const SuitDesigner = () => {
     // { kind, id } while a change is being prepared (images loading).
     const [pending, setPending] = useState(null);
     const [notice, setNotice] = useState(null);
+    const [bagNotice, setBagNotice] = useState(false);
+    const bagTimerRef = useRef(null);
+    const bagItems = useCart();
 
     const [activeTab, setActiveTab] = useState("fabric");
     const [showLiningPanel, setShowLiningPanel] = useState(false);
     const [showLightbox, setShowLightbox] = useState(false);
+    const [infoFabricId, setInfoFabricId] = useState(null);
     // true once the lightbox's sharper layers are decoded; until then it shows the on-screen ones, enlarged.
     const [hiresReady, setHiresReady] = useState(false);
 
@@ -1315,6 +1531,21 @@ const SuitDesigner = () => {
     /* The panel stays open so linings can be compared one after another. */
     const handleLiningSelect = (lining) => choose("lining", lining.id, { lining: liningIntent(lining) });
 
+    const handleAddToBag = () => {
+        if (!selection) return;
+        addToCart({
+            fabricId: selection.fabric.id,
+            fabricName: selection.fabric.name,
+            fabricImage: selection.fabric.image,
+            price: Number(selection.fabric.price) || 0,
+            design: intentRef.current,
+            summary: summarizeDesign(intentRef.current),
+        });
+        if (bagTimerRef.current) clearTimeout(bagTimerRef.current);
+        setBagNotice(true);
+        bagTimerRef.current = setTimeout(() => setBagNotice(false), 4500);
+    };
+
     const handleReset = () => {
         if (!fabrics?.length) return;
         clearSavedDesign();
@@ -1427,6 +1658,20 @@ const SuitDesigner = () => {
             <main className="relative flex-1 order-1 min-w-0 min-h-0 p-3 max-lg:landscape:order-2 lg:order-2 sm:p-5 lg:p-8">
                 <SuitStage layers={layers} dimmed={Boolean(pending)} />
 
+                {/* FABRIC OVERLAY — pictures and details for one cloth, over the stage only */}
+                {infoFabricId != null && fabrics.find((f) => f.id === infoFabricId) && (
+                    <FabricOverlay
+                        fabric={fabrics.find((f) => f.id === infoFabricId)}
+                        fabrics={fabrics}
+                        onClose={() => setInfoFabricId(null)}
+                        onNavigate={(dir) => {
+                            const i = fabrics.findIndex((f) => f.id === infoFabricId);
+                            setInfoFabricId(fabrics[(i + dir + fabrics.length) % fabrics.length].id);
+                        }}
+                        onChoose={(fabric) => { changeFabric(fabric); }}
+                    />
+                )}
+
                 <button
                     type="button"
                     onClick={() => setShowLightbox(true)}
@@ -1441,6 +1686,32 @@ const SuitDesigner = () => {
                     <div className="absolute z-30 flex items-center gap-2 px-3 py-1.5 rounded-full shadow-lg top-3 right-3 lg:top-4 lg:right-4 bg-white/90 backdrop-blur-sm animate-slide-down">
                         <Loader2 className="w-3.5 h-3.5 text-gray-900 animate-spin" />
                         <span className="text-xs font-medium text-gray-700">{PENDING_LABELS[pending.kind] || "Updating"}…</span>
+                    </div>
+                )}
+
+                <div className="absolute z-30 flex items-center gap-3 bottom-3 left-3 lg:bottom-6 lg:left-6">
+                    <button
+                        type="button"
+                        onClick={handleAddToBag}
+                        disabled={Boolean(pending)}
+                        className="inline-flex items-center gap-2.5 pl-4 pr-5 py-3 text-sm font-medium text-white bg-gray-900 rounded-full shadow-lg transition-all duration-200 hover:bg-gray-700 active:scale-[0.98] disabled:opacity-50"
+                    >
+                        <ShoppingBag className="w-4 h-4" />
+                        Add to bag
+                        <span className="pl-2.5 ml-0.5 border-l border-white/20 tabular-nums">${Math.round(Number(selectedFabric?.price) || 0)}</span>
+                    </button>
+                    <span className="hidden text-xs text-gray-500 sm:block">{selectedFabric?.name}</span>
+                </div>
+
+                {bagNotice && (
+                    <div role="status" className="absolute z-30 flex items-center gap-3 px-4 py-3 text-white bg-gray-900 rounded-2xl shadow-xl top-3 left-3 lg:top-4 lg:left-4 animate-slide-down">
+                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-white/15">
+                            <Check className="w-3.5 h-3.5" />
+                        </span>
+                        <span className="text-sm">Added to your bag</span>
+                        <Link href={route("cart")} className="ml-2 text-sm font-medium underline underline-offset-4 hover:no-underline">
+                            View bag
+                        </Link>
                     </div>
                 )}
 
@@ -1478,26 +1749,34 @@ const SuitDesigner = () => {
             >
                 {/* content */}
                 <div className="relative flex flex-col flex-1 min-w-0 min-h-0">
-                    <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-gray-100 lg:items-start lg:px-5 lg:py-5 shrink-0">
-                        <div className="min-w-0">
-                            <p className="hidden text-[10px] font-semibold tracking-[0.24em] text-gray-400 uppercase lg:block lg:mb-1.5">Custom Tailor</p>
-                            <h1 className="text-base font-semibold text-gray-900 truncate lg:text-xl lg:font-medium lg:tracking-tight">{copy.title}</h1>
-                            <p className="hidden mt-0.5 text-xs text-gray-500 sm:block lg:mt-1 lg:text-sm">
-                                {copy.subtitle}
-                                {selectedFabric?.price != null && (
-                                    <span className="hidden lg:inline"> · {selectedFabric.name} from ${Math.round(Number(selectedFabric.price))}</span>
+                    <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-gray-100 lg:px-5 lg:py-3 shrink-0">
+                        <h1 className="text-[11px] font-semibold tracking-[0.24em] text-gray-500 uppercase">
+                            <span className="sr-only">Custom Tailor — </span>{copy.title}
+                        </h1>
+                        <div className="flex items-center gap-1 shrink-0 lg:gap-2">
+                            <Link
+                                href={route("cart")}
+                                title="View bag"
+                                aria-label="View bag"
+                                className="relative p-2 text-gray-400 transition-all duration-200 rounded-lg hover:text-gray-700 hover:bg-gray-100 active:scale-95"
+                            >
+                                <ShoppingBag className="w-4 h-4" />
+                                {cartCount(bagItems) > 0 && (
+                                    <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[1.1rem] h-[1.1rem] px-1 text-[10px] font-semibold text-white bg-gray-900 rounded-full">
+                                        {cartCount(bagItems)}
+                                    </span>
                                 )}
-                            </p>
+                            </Link>
+                            <button
+                                type="button"
+                                onClick={handleReset}
+                                title="Reset design"
+                                aria-label="Reset design"
+                                className="p-2 text-gray-400 transition-all duration-200 rounded-lg hover:text-gray-700 hover:bg-gray-100 active:scale-95"
+                            >
+                                <RotateCcw className="w-4 h-4" />
+                            </button>
                         </div>
-                        <button
-                            type="button"
-                            onClick={handleReset}
-                            title="Reset design"
-                            aria-label="Reset design"
-                            className="p-2 text-gray-400 transition-all duration-200 rounded-lg shrink-0 hover:text-gray-700 hover:bg-gray-100 active:scale-95"
-                        >
-                            <RotateCcw className="w-4 h-4" />
-                        </button>
                     </div>
 
                     <div ref={panelScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain thin-scrollbar">
@@ -1508,11 +1787,13 @@ const SuitDesigner = () => {
                                         <FabricOptionTile
                                             key={fabric.id}
                                             isSelected={fabric.id === selectedFabric.id}
-                                            onClick={() => changeFabric(fabric)}
+                                            onClick={() => { setInfoFabricId(null); changeFabric(fabric); }}
                                             onHover={() => prefetchFabric(fabric)}
+                                            onInfo={() => setInfoFabricId(fabric.id)}
                                             image={fabric.image}
                                             label={fabric.name}
                                             price={fabric.price}
+                                            isNew={fabric.is_new}
                                             isLoading={isPending("fabric", fabric.id)}
                                         />
                                     ))}

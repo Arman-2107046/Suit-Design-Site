@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BustsConfiguratorCache;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Fabric extends Model
 {
@@ -16,14 +17,32 @@ class Fabric extends Model
         'price',
         'image',
         'is_default',
+        'is_new',
         'status',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
         'is_default' => 'boolean',
+        'is_new' => 'boolean',
         'status' => 'boolean',
     ];
+
+    public function images(): HasMany
+    {
+        return $this->hasMany(FabricImage::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function infos(): HasMany
+    {
+        return $this->hasMany(FabricInfo::class)->latest('updated_at');
+    }
+
+    /** The card shown behind "more info": the most recently edited info record, if any. */
+    public function latestInfo(): HasOne
+    {
+        return $this->hasOne(FabricInfo::class)->latestOfMany('updated_at');
+    }
 
     public function sleeves()
     {

@@ -56,6 +56,8 @@ class SuitConfiguratorController extends Controller
     private function buildPayload(): array
     {
         $fabrics = Fabric::with([
+            'images',
+            'latestInfo',
             /*
             |--------------------------------------------------------------------------
             | Fabric-level options
@@ -130,6 +132,10 @@ class SuitConfiguratorController extends Controller
                     'price' => $fabric->price,
                     'image' => $fabric->image,
                     'is_default' => $fabric->is_default,
+                    'is_new' => (bool) $fabric->is_new,
+                    'info' => $fabric->latestInfo?->toCardArray(),
+                    'preview_images' => $fabric->images->where('kind', 'preview')->pluck('url')->values()->all(),
+                    'real_life_images' => $fabric->images->where('kind', 'real_life')->pluck('url')->values()->all(),
 
 
                     /*

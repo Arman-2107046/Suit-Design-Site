@@ -35,6 +35,9 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
+            'flash' => fn () => [
+                'profile' => $request->session()->get('profile'),
+            ],
             'brand' => fn () => [
                 'heroImage' => $request->routeIs('login', 'register', 'password.*', 'verification.*')
                     ? HomepageSetting::current()->hero_image_url

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Head, Link, usePage } from "@inertiajs/react";
+import { cartCount, useCart } from "@/lib/store";
 import { Menu, X, Globe, User, ShoppingBag, ChevronLeft, ChevronRight, ArrowRight, ArrowUpRight, Instagram, Facebook } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -121,6 +122,7 @@ const NavAnchor = ({ item, ...rest }) =>
 const Header = ({ user }) => {
     const [scrolled, setScrolled] = useState(false);
     const [open, setOpen] = useState(false);
+    const bagCount = cartCount(useCart());
 
     useEffect(() => {
         const onScroll = () => setScrolled(window.scrollY > 24);
@@ -197,9 +199,14 @@ const Header = ({ user }) => {
                             <User className="w-5 h-5" strokeWidth={1.5} />
                             <span className="hidden sm:inline">{user ? "Account" : "Login"}</span>
                         </a>
-                        <button type="button" aria-label="Bag" className="transition-opacity hover:opacity-60">
+                        <Link href={route("cart")} aria-label="Bag" className="relative transition-opacity hover:opacity-60">
                             <ShoppingBag className="w-5 h-5" strokeWidth={1.5} />
-                        </button>
+                            {bagCount > 0 && (
+                                <span className={`absolute -top-1.5 -right-2 flex items-center justify-center min-w-[1rem] h-4 px-1 text-[10px] font-semibold rounded-full ${solid ? "bg-gray-900 text-white" : "bg-white text-gray-900"}`}>
+                                    {bagCount}
+                                </span>
+                            )}
+                        </Link>
                     </div>
                 </div>
             </div>

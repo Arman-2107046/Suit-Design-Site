@@ -6,6 +6,7 @@ use App\Services\BulkUpload\BodiesUploader;
 use App\Services\BulkUpload\BodyTypesUploader;
 use App\Services\BulkUpload\ButtonImagesUploader;
 use App\Services\BulkUpload\ChestPocketTypesUploader;
+use App\Services\BulkUpload\FabricImagesUploader;
 use App\Services\BulkUpload\FabricsUploader;
 use App\Services\BulkUpload\ChestPocketsUploader;
 use App\Services\BulkUpload\LapelCategoriesUploader;
@@ -34,6 +35,8 @@ class BulkUploadService
         $priority = [
 
             'FAB' => 1,
+            'FPI' => 1,
+            'FRL' => 1,
 
             'LT' => 2,
 
@@ -131,6 +134,10 @@ class BulkUploadService
 
                 'FAB' =>
                     app(FabricsUploader::class)
+                        ->handle($file),
+
+                'FPI', 'FRL' =>
+                    app(FabricImagesUploader::class)
                         ->handle($file),
 
                 'LT' =>

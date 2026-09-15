@@ -37,12 +37,14 @@ class FabricImporter extends Importer
                 ->requiredMapping()
                 ->boolean()
                 ->rules(['required', 'boolean']),
+
+            ImportColumn::make('is_new')->boolean()->rules(['nullable', 'boolean']),
         ];
     }
 
     public function resolveRecord(): ?Fabric
     {
-        return Fabric::updateOrCreate(
+        $fabric = Fabric::updateOrCreate(
             [
                 'name' => $this->data['name'],
             ],
@@ -51,8 +53,12 @@ class FabricImporter extends Importer
                 'image' => $this->data['image'],
                 'is_default' => (bool) $this->data['is_default'],
                 'status' => (bool) $this->data['status'],
+                ...(array_key_exists('is_new', $this->data) && $this->data['is_new'] !== null && $this->data['is_new'] !== '' ? ['is_new' => (bool) $this->data['is_new']] : []),
             ]
         );
+
+
+        return $fabric;
     }
 
     public static function getCompletedNotificationBody(Import $import): string
