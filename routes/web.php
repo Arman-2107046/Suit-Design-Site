@@ -1,19 +1,16 @@
 <?php
 
 use App\Http\Controllers\ProfileController;
-use Illuminate\Foundation\Application;
+use App\Models\HomepageSetting;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use App\Http\Controllers\Api\SuitConfiguratorController;
 
-Route::get('/', function () {
-    return Inertia::render('Welcome', [
-        'canLogin' => Route::has('login'),
-        'canRegister' => Route::has('register'),
-        'laravelVersion' => Application::VERSION,
-        'phpVersion' => PHP_VERSION,
-    ]);
-});
+Route::get('/', fn () => Inertia::render('Home', [
+    'homepage' => HomepageSetting::current()->toHomepageProps(),
+]))->name('home');
+
+Route::get('/design', fn () => Inertia::render('Welcome'))->name('design');
 
 Route::get('/design-suit', [SuitConfiguratorController::class, 'index'])
     ->name('suit.configurator');

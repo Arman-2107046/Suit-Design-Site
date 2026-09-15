@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\HomepageSetting;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -33,6 +34,11 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'auth' => [
                 'user' => $request->user(),
+            ],
+            'brand' => fn () => [
+                'heroImage' => $request->routeIs('login', 'register', 'password.*', 'verification.*')
+                    ? HomepageSetting::current()->hero_image_url
+                    : null,
             ],
         ];
     }

@@ -2,10 +2,63 @@
 @tailwind components;
 @tailwind utilities;
 
-/* (Adobe RGB–like look) — applied to option images and the composited suit stage alike */
-img,
-canvas.stage-canvas {
-  filter: brightness(1.05) contrast(1.1) saturate(1.15);
+/* Images and the suit stage are shown with their raw pixel values — no filters. */
+
+html { scroll-behavior: smooth; }
+::selection { background: #111; color: #fff; }
+.text-balance { text-wrap: balance; }
+
+/* Shared pill buttons */
+.btn-ink {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.85rem 1.75rem; border-radius: 9999px; border: 1px solid transparent;
+  font-size: 0.875rem; font-weight: 500; line-height: 1.25;
+  transition: background-color 0.3s, color 0.3s, border-color 0.3s, gap 0.3s, transform 0.15s;
+}
+.btn-ink:active { transform: scale(0.98); }
+.btn-ink:hover { gap: 0.75rem; }
+.btn-ink--light { background: #fff; color: #111; border-color: #fff; }
+.btn-ink--light:hover { background: #f3f4f6; }
+.btn-ink--outline { color: #111; border-color: #111; }
+.btn-ink--outline:hover { background: #111; color: #fff; }
+
+/* Header nav: hairline grows in from the left on hover */
+.nav-link { position: relative; padding-bottom: 2px; }
+.nav-link::after {
+  content: ""; position: absolute; left: 0; bottom: -2px; height: 1px; width: 100%;
+  background: currentColor; transform: scaleX(0); transform-origin: left; transition: transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.nav-link:hover::after { transform: scaleX(1); }
+
+/* Hero: slow drift-zoom on the photo, headline words rising */
+.hero-drift { animation: hero-drift 14s ease-out both; }
+@keyframes hero-drift {
+  from { transform: scale(1.08); }
+  to { transform: scale(1); }
+}
+.animate-rise { animation: rise 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes rise {
+  from { opacity: 0; transform: translateY(110%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.scroll-cue { transform-origin: top; animation: scroll-cue 2.2s ease-in-out infinite; }
+@keyframes scroll-cue {
+  0% { transform: scaleY(0); transform-origin: top; }
+  45% { transform: scaleY(1); transform-origin: top; }
+  55% { transform: scaleY(1); transform-origin: bottom; }
+  100% { transform: scaleY(0); transform-origin: bottom; }
+}
+
+/* Marquee strip */
+.marquee-track { animation: marquee 38s linear infinite; }
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .hero-drift, .animate-rise, .scroll-cue, .marquee-track { animation: none; }
+  .animate-rise { opacity: 1; transform: none; }
 }
 
 /* Horizontal option strips on small screens scroll without a visible bar */
@@ -15,6 +68,24 @@ canvas.stage-canvas {
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+/* Homepage sections fade up the first time they scroll into view */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.8s cubic-bezier(0.2, 0.7, 0.2, 1), transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+[data-reveal].is-visible {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
 }
 
 /* Thin, unobtrusive scrollbar for the options panel */
@@ -28,4 +99,33 @@ canvas.stage-canvas {
 .thin-scrollbar::-webkit-scrollbar-thumb {
   background: #e5e7eb;
   border-radius: 9999px;
+}
+
+/* Designer loading screen */
+.loading-hairline {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: rgba(17, 17, 17, 0.06);
+}
+.loading-hairline > span {
+  display: block;
+  height: 100%;
+  background: #111;
+  transform-origin: left;
+  transition: transform 1.2s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.loading-sweep {
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, #111, transparent);
+  animation: loading-sweep 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes loading-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-sweep { animation: none; width: 100%; opacity: 0.4; }
 }

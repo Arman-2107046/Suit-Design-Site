@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, memo } from "react";
-import { Head } from "@inertiajs/react";
-import { Loader2, Layers, Scissors, Palette, Menu, X, RotateCcw } from "lucide-react";
+import { Head, Link } from "@inertiajs/react";
+import { Loader2, Layers, Scissors, Palette, Menu, X, RotateCcw, Maximize2, ArrowLeft } from "lucide-react";
 
-const STORAGE_KEY = "hockerty.premium.design.v1";
+const STORAGE_KEY = "custom-tailor.design.v1";
 const CANVAS_TIMEOUT_MS = 8000;
 
 /* ------------------------------------------------------------------ */
@@ -32,9 +32,13 @@ function pickLayerWidth() {
 }
 
 const LAYER_WIDTH = pickLayerWidth();
+/* The lightbox zooms in, so it gets a sharper set of layers (the source renders are 2291 px wide). */
+const HIRES_WIDTH = LAYER_WIDTH >= 1600 ? 2000 : 1600;
+const LIGHTBOX_ZOOM = 2.5;
 const THUMB_WIDTH = 320;
 
 const layerUrl = (url) => optimizeUrl(url, LAYER_WIDTH);
+const hiresUrl = (url) => optimizeUrl(url, HIRES_WIDTH);
 const thumbUrl = (url) => optimizeUrl(url, THUMB_WIDTH);
 
 /* Native render aspect (width / height) — used until the first layer is decoded. */
@@ -163,6 +167,161 @@ const imageCache = new ImageCache();
 /*  as an LRU; the layers currently on screen are pinned so a window   */
 /*  resize never has to wait.                                          */
 /* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/*  Colour pipeline                                                    */
+/*                                                                     */
+/*  The renders were authored in Adobe RGB (1998), but only some of    */
+/*  them (sleeve, lapel, pockets, buttons, custom lining) were exported */
+/*  with the profile embedded; the body, default lining and every      */
+/*  swatch are untagged. A browser colour-manages the tagged ones and  */
+/*  shows the rest raw, which is why they never matched.               */
+/*                                                                     */
+/*  So the embedded profile is ignored on decode and *every* image is  */
+/*  treated as Adobe RGB and converted to sRGB for display — the same  */
+/*  richer look the tagged layers had, now applied uniformly. The      */
+/*  per-pixel work runs in Web Workers while a change is buffering,    */
+/*  and the converted bitmaps are what the cache keeps.                */
+/* ------------------------------------------------------------------ */
+const COLOR_PROFILE = "adobe-rgb"; // "adobe-rgb" | "raw"
+
+const RAW_DECODE = { colorSpaceConversion: "none", premultiplyAlpha: "none" };
+
+/* Self-contained (no outer references) so its source can be shipped to a worker. */
+function makeAdobeRgbToSrgb() {
+    const GAMMA = 563 / 256; // Adobe RGB (1998) transfer curve
+    const toLinear = new Float32Array(256);
+    for (let i = 0; i < 256; i++) toLinear[i] = Math.pow(i / 255, GAMMA);
+    const N = 4096;
+    const toSrgb = new Uint8ClampedArray(N + 1);
+    for (let i = 0; i <= N; i++) {
+        const v = i / N;
+        toSrgb[i] = Math.round((v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055) * 255);
+    }
+    const enc = (v) => toSrgb[v <= 0 ? 0 : v >= 1 ? N : (v * N + 0.5) | 0];
+    // Linear Adobe RGB -> linear sRGB (both D65).
+    return function convert(data) {
+        for (let i = 0; i < data.length; i += 4) {
+            if (data[i + 3] === 0) continue;
+            const r = toLinear[data[i]];
+            const g = toLinear[data[i + 1]];
+            const b = toLinear[data[i + 2]];
+            data[i] = enc(1.39835 * r - 0.39835 * g);
+            data[i + 1] = enc(g);
+            data[i + 2] = enc(-0.04292 * g + 1.04292 * b);
+        }
+    };
+}
+
+const COLOR_WORKER_SOURCE = `
+const convert = (${makeAdobeRgbToSrgb.toString()})();
+self.onmessage = async (e) => {
+    const { id, blob } = e.data;
+    try {
+        const bmp = await createImageBitmap(blob, { colorSpaceConversion: "none", premultiplyAlpha: "none" });
+        // No willReadFrequently: a GPU-backed canvas hands back a GPU-backed bitmap,
+        // so drawing it on the main canvas is a blit rather than a 12 MB upload.
+        const canvas = new OffscreenCanvas(bmp.width, bmp.height);
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(bmp, 0, 0);
+        bmp.close();
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        convert(img.data);
+        ctx.putImageData(img, 0, 0);
+        const out = canvas.transferToImageBitmap();
+        self.postMessage({ id, bitmap: out }, [out]);
+    } catch (err) {
+        self.postMessage({ id, error: String(err) });
+    }
+};
+`;
+
+class ColorPipeline {
+    constructor() {
+        this.mode = COLOR_PROFILE;
+        this.workers = [];
+        this.next = 0;
+        this.seq = 0;
+        this.pending = new Map();
+        this.convertMain = null;
+        const canWork =
+            typeof Worker === "function" && typeof OffscreenCanvas === "function" && typeof createImageBitmap === "function";
+        if (this.mode === "adobe-rgb" && canWork) {
+            try {
+                const url = URL.createObjectURL(new Blob([COLOR_WORKER_SOURCE], { type: "text/javascript" }));
+                const n = Math.max(1, Math.min(3, (navigator.hardwareConcurrency || 2) - 1));
+                for (let i = 0; i < n; i++) {
+                    const w = new Worker(url);
+                    w.onmessage = (e) => this.settle(e.data);
+                    w.onerror = () => this.failAll();
+                    this.workers.push(w);
+                }
+            } catch {
+                this.workers = [];
+            }
+        }
+    }
+
+    settle({ id, bitmap, error }) {
+        const p = this.pending.get(id);
+        if (!p) return;
+        this.pending.delete(id);
+        if (bitmap) p.resolve(bitmap);
+        else p.reject(new Error(error || "colour worker failed"));
+    }
+
+    failAll() {
+        this.workers.forEach((w) => w.terminate());
+        this.workers = [];
+        for (const [id, p] of this.pending) {
+            this.pending.delete(id);
+            p.reject(new Error("colour worker crashed"));
+        }
+    }
+
+    /* Blob | HTMLImageElement -> ImageBitmap in display (sRGB) colour. */
+    async decode(source) {
+        if (this.mode !== "adobe-rgb") return createImageBitmap(source, RAW_DECODE);
+
+        if (source instanceof Blob && this.workers.length > 0) {
+            try {
+                return await this.inWorker(source);
+            } catch {
+                /* fall through to the main thread */
+            }
+        }
+
+        const bmp = await createImageBitmap(source, RAW_DECODE);
+        try {
+            const canvas = document.createElement("canvas");
+            canvas.width = bmp.width;
+            canvas.height = bmp.height;
+            const ctx = canvas.getContext("2d", { willReadFrequently: true });
+            ctx.drawImage(bmp, 0, 0);
+            const img = ctx.getImageData(0, 0, canvas.width, canvas.height); // throws on a tainted (non-CORS) canvas
+            if (!this.convertMain) this.convertMain = makeAdobeRgbToSrgb();
+            this.convertMain(img.data);
+            ctx.putImageData(img, 0, 0);
+            const out = await createImageBitmap(canvas);
+            bmp.close();
+            return out;
+        } catch {
+            return bmp; // shown unconverted rather than not at all
+        }
+    }
+
+    inWorker(blob) {
+        return new Promise((resolve, reject) => {
+            const id = ++this.seq;
+            this.pending.set(id, { resolve, reject });
+            const w = this.workers[this.next++ % this.workers.length];
+            w.postMessage({ id, blob });
+        });
+    }
+}
+
+const colorPipeline = new ColorPipeline();
+
 class BitmapCache {
     constructor(budgetBytes) {
         this.budget = budgetBytes;
@@ -219,7 +378,7 @@ class BitmapCache {
 
         const promise = imageCache
             .load(url)
-            .then((source) => (source ? createImageBitmap(source) : null))
+            .then((source) => (source ? colorPipeline.decode(source) : null))
             .then((bmp) => {
                 if (bmp) this.put(url, bmp);
                 return bmp;
@@ -241,7 +400,7 @@ class BitmapCache {
 }
 
 /* Enough for the suit on screen plus the last few looks; scaled with the layer size the device asked for. */
-const bitmapCache = new BitmapCache(LAYER_WIDTH >= 1600 ? 220 * 1024 * 1024 : 120 * 1024 * 1024);
+const bitmapCache = new BitmapCache(LAYER_WIDTH >= 1600 ? 320 * 1024 * 1024 : 200 * 1024 * 1024);
 
 const runWhenIdle = (fn) => {
     if (typeof window !== "undefined" && "requestIdleCallback" in window) {
@@ -459,7 +618,7 @@ function layersFrom(sel) {
 
     return layers
         .filter((l) => l.image)
-        .map((l) => ({ ...l, image: layerUrl(l.image) }))
+        .map((l) => ({ ...l, raw: l.image, image: layerUrl(l.image) }))
         .sort((a, b) => a.z - b.z);
 }
 
@@ -525,6 +684,42 @@ const LazyImage = ({ src, alt, className, style, fallback = null }) => {
     );
 };
 
+/*
+ * Colour-bearing thumbnails (fabric and lining swatches) are drawn through
+ * the same colour pipeline as the suit so they match it. Line-art diagrams
+ * stay as plain <img>s — they are neutral grey, which the profile leaves alone.
+ */
+const SwatchImage = ({ src, alt, className, fallback = null }) => {
+    const canvasRef = useRef(null);
+    const [state, setState] = useState("loading");
+
+    useEffect(() => {
+        if (!src) return undefined;
+        let alive = true;
+        setState("loading");
+        bitmapCache.make(src).then((bmp) => {
+            if (!alive) return;
+            const canvas = canvasRef.current;
+            if (!bmp || !canvas) { setState("failed"); return; }
+            canvas.width = bmp.width;
+            canvas.height = bmp.height;
+            canvas.getContext("2d").drawImage(bmp, 0, 0);
+            setState("ready");
+        });
+        return () => { alive = false; };
+    }, [src]);
+
+    if (!src || state === "failed") return fallback;
+    return (
+        <canvas
+            ref={canvasRef}
+            role="img"
+            aria-label={alt || ""}
+            className={`${className} transition-opacity duration-300 ${state === "ready" ? "opacity-100" : "opacity-0"}`}
+        />
+    );
+};
+
 const SelectedBadge = () => (
     <div className="absolute z-20 flex items-center justify-center w-5 h-5 text-xs text-white bg-gray-900 rounded-full top-1.5 right-1.5 lg:top-2 lg:right-2 animate-pop">
         ✓
@@ -550,7 +745,7 @@ const TILE_W = "w-[6.75rem] sm:w-[7.5rem] lg:w-auto";
 const TILE_W_WIDE = "w-[8.5rem] sm:w-[9.5rem] lg:w-auto";
 
 const tileClass = (isSelected, width = TILE_W) =>
-    `${TILE_BASE} ${width} ${isSelected ? "shadow-md scale-[1.02]" : "hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"}`;
+    `${TILE_BASE} ${width} ${isSelected ? "shadow-md scale-[1.02] ring-1 ring-gray-900/80" : "hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"}`;
 
 const hoverHandlers = (onHover) => (onHover ? { onMouseEnter: onHover, onFocus: onHover, onPointerDown: onHover } : {});
 
@@ -560,7 +755,7 @@ const FabricOptionTile = memo(function FabricOptionTile({ isSelected, onClick, o
             {isSelected && <SelectedBadge />}
             {isLoading && <TileSpinner />}
             <div className="w-full aspect-[4/3] flex items-center justify-center bg-transparent rounded-md overflow-hidden">
-                <LazyImage
+                <SwatchImage
                     src={thumbUrl(image)}
                     alt={label}
                     className="object-contain w-full h-full"
@@ -710,9 +905,15 @@ function stageAspectOf(layers) {
     return DEFAULT_STAGE_ASPECT;
 }
 
-const SuitStage = memo(function SuitStage({ layers, dimmed }) {
+/*
+ * `zoom` > 1 draws the suit that many times larger than would fit, inside a
+ * scrollable area that starts centred and can be dragged with the mouse
+ * (touch scrolls natively). Used by the lightbox.
+ */
+const SuitStage = memo(function SuitStage({ layers, dimmed, zoom = 1 }) {
     const wrapRef = useRef(null);
     const canvasRef = useRef(null);
+    const dragRef = useRef(null);
     const [area, setArea] = useState({ w: 0, h: 0 });
     const [tick, setTick] = useState(0);
 
@@ -720,9 +921,39 @@ const SuitStage = memo(function SuitStage({ layers, dimmed }) {
 
     const box = useMemo(() => {
         if (!area.w || !area.h) return { w: 0, h: 0 };
-        const w = Math.min(area.w, area.h * aspect);
+        const w = Math.min(area.w, area.h * aspect) * zoom;
         return { w: Math.floor(w), h: Math.floor(w / aspect) };
-    }, [area, aspect]);
+    }, [area, aspect, zoom]);
+
+    /* Start a zoomed view centred on the suit. */
+    useLayoutEffect(() => {
+        const el = wrapRef.current;
+        if (!el || zoom <= 1 || !box.w) return;
+        el.scrollLeft = Math.max(0, (box.w - el.clientWidth) / 2);
+        el.scrollTop = Math.max(0, (box.h - el.clientHeight) / 2);
+    }, [zoom, box.w, box.h]);
+
+    const onPointerDown = (e) => {
+        if (zoom <= 1 || e.pointerType === "touch" || e.button !== 0) return;
+        const el = wrapRef.current;
+        dragRef.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop };
+        el.setPointerCapture?.(e.pointerId);
+        el.classList.add("cursor-grabbing");
+    };
+    const onPointerMove = (e) => {
+        const d = dragRef.current;
+        if (!d) return;
+        const el = wrapRef.current;
+        el.scrollLeft = d.left - (e.clientX - d.x);
+        el.scrollTop = d.top - (e.clientY - d.y);
+    };
+    const onPointerUp = (e) => {
+        if (!dragRef.current) return;
+        dragRef.current = null;
+        const el = wrapRef.current;
+        el.releasePointerCapture?.(e.pointerId);
+        el.classList.remove("cursor-grabbing");
+    };
 
     /* Track the available area. */
     useLayoutEffect(() => {
@@ -749,7 +980,9 @@ const SuitStage = memo(function SuitStage({ layers, dimmed }) {
         const canvas = canvasRef.current;
         if (!canvas || !box.w || !box.h) return undefined;
 
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        // Never allocate more canvas pixels than the sharpest layer can fill.
+        const sourceW = layers.reduce((m, l) => Math.max(m, bitmapCache.get(l.image)?.width || 0), 0) || HIRES_WIDTH;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2, sourceW / box.w);
         const W = Math.round(box.w * dpr);
         const H = Math.round(box.h * dpr);
         if (canvas.width !== W || canvas.height !== H) {
@@ -787,6 +1020,29 @@ const SuitStage = memo(function SuitStage({ layers, dimmed }) {
         return () => { alive = false; };
     }, [layers, box, tick]);
 
+    if (zoom > 1) {
+        return (
+            <div
+                ref={wrapRef}
+                className="relative w-full h-full overflow-auto overscroll-contain no-scrollbar cursor-grab touch-pan-x touch-pan-y"
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerCancel={onPointerUp}
+            >
+                <div style={{ width: box.w || undefined, height: box.h || undefined }}>
+                    <canvas
+                        ref={canvasRef}
+                        role="img"
+                        aria-label="Your suit, zoomed in"
+                        className={`stage-canvas block select-none transition-opacity duration-300 ease-out ${dimmed ? "opacity-60" : "opacity-100"}`}
+                        style={{ width: box.w || undefined, height: box.h || undefined }}
+                    />
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div ref={wrapRef} className="relative w-full h-full">
             <canvas
@@ -822,6 +1078,47 @@ const TAB_COPY = {
 };
 
 /* ------------------------------------------------------------------ */
+/*  Loading screen                                                     */
+/*                                                                     */
+/*  Shown while the catalogue downloads (stage 0) and while the first  */
+/*  look's layers are decoded (stage 1). A hairline progress bar       */
+/*  creeps forward per stage and completes when the designer mounts.   */
+/* ------------------------------------------------------------------ */
+const LOADING_STEPS = ["Opening the atelier", "Preparing your suit"];
+
+const LoadingScreen = ({ stage }) => (
+    <div className="fixed inset-0 z-[950] flex flex-col bg-[#f7f6f3] text-gray-900 animate-fade-in" role="status" aria-live="polite">
+        <div className="loading-hairline" aria-hidden="true">
+            <span style={{ transform: `scaleX(${stage === 0 ? 0.35 : 0.8})` }} />
+        </div>
+
+        <div className="flex flex-col items-center justify-center flex-1 px-6 text-center">
+            <p className="text-[11px] font-semibold tracking-[0.28em] text-gray-400 uppercase animate-slide-up">Made to measure</p>
+            <p className="mt-4 text-4xl font-light tracking-tight sm:text-5xl animate-slide-up [animation-delay:80ms]">Custom Tailor</p>
+
+            <div className="relative w-56 h-px mt-10 overflow-hidden bg-gray-200 animate-slide-up [animation-delay:160ms]" aria-hidden="true">
+                <span className="loading-sweep" />
+            </div>
+
+            <div className="relative h-6 mt-6 text-sm text-gray-500 animate-slide-up [animation-delay:240ms]">
+                {LOADING_STEPS.map((label, i) => (
+                    <span
+                        key={label}
+                        className={`absolute inset-x-0 transition-all duration-500 ${
+                            i === stage ? "opacity-100 translate-y-0" : "opacity-0 " + (i < stage ? "-translate-y-2" : "translate-y-2")
+                        }`}
+                    >
+                        {label}…
+                    </span>
+                ))}
+            </div>
+        </div>
+
+        <p className="pb-8 text-[11px] tracking-wide text-center text-gray-400">Every fabric, every detail — rendered for you</p>
+    </div>
+);
+
+/* ------------------------------------------------------------------ */
 /*  Suit designer                                                      */
 /* ------------------------------------------------------------------ */
 const SuitDesigner = () => {
@@ -836,7 +1133,10 @@ const SuitDesigner = () => {
     const [notice, setNotice] = useState(null);
 
     const [activeTab, setActiveTab] = useState("fabric");
-    const [showLiningModal, setShowLiningModal] = useState(false);
+    const [showLiningPanel, setShowLiningPanel] = useState(false);
+    const [showLightbox, setShowLightbox] = useState(false);
+    // true once the lightbox's sharper layers are decoded; until then it shows the on-screen ones, enlarged.
+    const [hiresReady, setHiresReady] = useState(false);
 
     const intentRef = useRef(EMPTY_INTENT);
     const targetFabricRef = useRef(null);
@@ -895,7 +1195,9 @@ const SuitDesigner = () => {
 
             if (list.length > 0) {
                 const saved = loadSavedDesign();
+                const linked = Number(new URLSearchParams(window.location.search).get("fabric"));
                 const fabric =
+                    (linked && list.find((f) => f.id === linked)) ||
                     (saved?.fabricId != null && list.find((f) => f.id === saved.fabricId)) ||
                     list.find((f) => f.is_default) ||
                     list[0];
@@ -939,18 +1241,23 @@ const SuitDesigner = () => {
 
     useEffect(() => () => noticeTimerRef.current && clearTimeout(noticeTimerRef.current), []);
 
-    /* Scroll the panel back to the top when switching tabs. */
+    /* Leaving the tab takes the lining panel with it; the panel starts at the top. */
     useEffect(() => {
+        setShowLiningPanel(false);
         panelScrollRef.current?.scrollTo({ top: 0 });
     }, [activeTab]);
 
-    /* Close the lining modal on Escape. */
+    /* Close the lightbox / lining panel on Escape. */
     useEffect(() => {
-        if (!showLiningModal) return undefined;
-        const onKey = (e) => e.key === "Escape" && setShowLiningModal(false);
+        if (!showLiningPanel && !showLightbox) return undefined;
+        const onKey = (e) => {
+            if (e.key !== "Escape") return;
+            if (showLightbox) setShowLightbox(false);
+            else setShowLiningPanel(false);
+        };
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
-    }, [showLiningModal]);
+    }, [showLiningPanel, showLightbox]);
 
     /* ---------- change handlers ---------- */
     const changeFabric = useCallback(
@@ -995,20 +1302,18 @@ const SuitDesigner = () => {
     const handleDefaultButtonClick = () => choose("button", "default", { button: null });
 
     const handleDefaultLiningClick = () => {
-        setShowLiningModal(false);
+        setShowLiningPanel(false);
         choose("lining", "default", { lining: liningIntent(null) });
     };
 
     const handleCustomLiningClick = () => {
-        setShowLiningModal(true);
+        setShowLiningPanel(true);
         const linings = targetFabricRef.current?.custom_linings || [];
         imageCache.prefetch(linings.flatMap((l) => [layerUrl(l.image), thumbUrl(l.fabric?.image)]), { front: true });
     };
 
-    const handleLiningSelect = (lining) => {
-        setShowLiningModal(false);
-        choose("lining", lining.id, { lining: liningIntent(lining) });
-    };
+    /* The panel stays open so linings can be compared one after another. */
+    const handleLiningSelect = (lining) => choose("lining", lining.id, { lining: liningIntent(lining) });
 
     const handleReset = () => {
         if (!fabrics?.length) return;
@@ -1016,7 +1321,7 @@ const SuitDesigner = () => {
         intentRef.current = EMPTY_INTENT;
         const fabric = fabrics.find((f) => f.is_default) || fabrics[0];
         targetFabricRef.current = fabric;
-        setShowLiningModal(false);
+        setShowLiningPanel(false);
         commit(resolveSelection(fabric, EMPTY_INTENT), { kind: "reset" });
     };
 
@@ -1028,6 +1333,26 @@ const SuitDesigner = () => {
 
     /* ---------- derived ---------- */
     const layers = useMemo(() => layersFrom(selection), [selection]);
+    const hiresLayers = useMemo(() => layers.map((l) => ({ ...l, image: hiresUrl(l.raw) })), [layers]);
+
+    /* Lightbox: decode the sharper layers while it is open, then swap them in all at once. */
+    useEffect(() => {
+        if (!showLightbox) {
+            setHiresReady(false);
+            bitmapCache.pin(layers.map((l) => l.image));
+            return undefined;
+        }
+        const urls = hiresLayers.map((l) => l.image);
+        bitmapCache.pin([...layers.map((l) => l.image), ...urls]);
+        if (bitmapCache.allReady(urls)) {
+            setHiresReady(true);
+            return undefined;
+        }
+        setHiresReady(false);
+        let alive = true;
+        bitmapCache.makeAll(urls).then(() => alive && setHiresReady(true));
+        return () => { alive = false; };
+    }, [showLightbox, layers, hiresLayers]);
 
     const lapelCategories = useMemo(() => {
         const lapels = selection?.body?.lapels;
@@ -1053,19 +1378,16 @@ const SuitDesigner = () => {
     /* ---------- loading / error states ---------- */
     if (loading || (!error && fabrics?.length > 0 && !selection)) {
         return (
-            <div className="flex items-center justify-center h-dvh px-6 bg-gray-50">
+            <>
                 <Head title="Design your suit" />
-                <div className="text-center animate-fade-in">
-                    <Loader2 className="w-10 h-10 mx-auto mb-4 text-gray-900 sm:w-12 sm:h-12 animate-spin" />
-                    <p className="text-base text-gray-600 sm:text-lg">{fabrics ? "Preparing your suit…" : "Loading customization options…"}</p>
-                </div>
-            </div>
+                <LoadingScreen stage={fabrics ? 1 : 0} />
+            </>
         );
     }
 
     if (error) {
         return (
-            <div className="flex items-center justify-center h-dvh px-4 bg-gray-50">
+            <div className="flex items-center justify-center px-4 h-dvh bg-gray-50">
                 <Head title="Design your suit" />
                 <div className="w-full max-w-md p-6 text-center bg-white shadow-lg sm:p-8 rounded-xl animate-slide-up">
                     <div className="mb-4 text-5xl">⚠️</div>
@@ -1085,7 +1407,7 @@ const SuitDesigner = () => {
 
     if (!selection) {
         return (
-            <div className="flex items-center justify-center h-dvh px-6 bg-gray-50">
+            <div className="flex items-center justify-center px-6 h-dvh bg-gray-50">
                 <Head title="Design your suit" />
                 <p className="text-gray-600">No data available</p>
             </div>
@@ -1098,12 +1420,22 @@ const SuitDesigner = () => {
 
     /* ---------- main render ---------- */
     return (
-        <div className="flex flex-col h-dvh overflow-hidden bg-white max-lg:landscape:flex-row lg:flex-row">
+        <div className="flex flex-col overflow-hidden bg-white h-dvh max-lg:landscape:flex-row lg:flex-row animate-fade-in">
             <Head title="Design your suit" />
 
             {/* STAGE — on top below lg, on the right from lg */}
-            <main className="relative flex-1 min-w-0 min-h-0 order-1 max-lg:landscape:order-2 lg:order-2 p-3 sm:p-5 lg:p-8">
+            <main className="relative flex-1 order-1 min-w-0 min-h-0 p-3 max-lg:landscape:order-2 lg:order-2 sm:p-5 lg:p-8">
                 <SuitStage layers={layers} dimmed={Boolean(pending)} />
+
+                <button
+                    type="button"
+                    onClick={() => setShowLightbox(true)}
+                    title="View full screen"
+                    aria-label="View full screen"
+                    className="absolute z-30 flex items-center justify-center w-10 h-10 text-gray-700 transition-all duration-200 bg-white border border-gray-200 rounded-full shadow-md bottom-3 right-3 lg:bottom-6 lg:right-6 lg:w-11 lg:h-11 hover:bg-gray-900 hover:text-white hover:border-gray-900 active:scale-95"
+                >
+                    <Maximize2 className="w-4 h-4 lg:w-5 lg:h-5" />
+                </button>
 
                 {pending && (
                     <div className="absolute z-30 flex items-center gap-2 px-3 py-1.5 rounded-full shadow-lg top-3 right-3 lg:top-4 lg:right-4 bg-white/90 backdrop-blur-sm animate-slide-down">
@@ -1145,11 +1477,17 @@ const SuitDesigner = () => {
                 aria-label="Customization options"
             >
                 {/* content */}
-                <div className="flex flex-col flex-1 min-w-0 min-h-0">
+                <div className="relative flex flex-col flex-1 min-w-0 min-h-0">
                     <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-gray-100 lg:items-start lg:px-5 lg:py-5 shrink-0">
                         <div className="min-w-0">
-                            <h1 className="text-base font-semibold text-gray-900 truncate lg:text-xl">{copy.title}</h1>
-                            <p className="hidden mt-0.5 text-xs text-gray-500 sm:block lg:mt-1 lg:text-sm">{copy.subtitle}</p>
+                            <p className="hidden text-[10px] font-semibold tracking-[0.24em] text-gray-400 uppercase lg:block lg:mb-1.5">Custom Tailor</p>
+                            <h1 className="text-base font-semibold text-gray-900 truncate lg:text-xl lg:font-medium lg:tracking-tight">{copy.title}</h1>
+                            <p className="hidden mt-0.5 text-xs text-gray-500 sm:block lg:mt-1 lg:text-sm">
+                                {copy.subtitle}
+                                {selectedFabric?.price != null && (
+                                    <span className="hidden lg:inline"> · {selectedFabric.name} from ${Math.round(Number(selectedFabric.price))}</span>
+                                )}
+                            </p>
                         </div>
                         <button
                             type="button"
@@ -1302,7 +1640,7 @@ const SuitDesigner = () => {
                         {activeTab === "accents" && (
                             <div key="accents" className="pb-4 lg:pb-5 animate-slide-in-left">
                                 <SectionHeader title="Lining Type" />
-                                <OptionRow cols={2}>
+                                <OptionRow cols={3}>
                                     {selectedBody?.default_linings?.map((defaultLining) => (
                                         <LiningOptionTile
                                             key={`default-${defaultLining.id}`}
@@ -1361,6 +1699,49 @@ const SuitDesigner = () => {
                             </div>
                         )}
                     </div>
+
+                    {/* CUSTOM LINING — slides over the panel, rail stays reachable */}
+                    {showLiningPanel && (
+                        <div
+                            role="region"
+                            aria-label="Custom lining"
+                            className="absolute inset-0 z-20 flex flex-col bg-white animate-slide-in-left"
+                        >
+                            <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-gray-100 lg:px-5 lg:py-4 shrink-0">
+                                <div className="min-w-0">
+                                    <h2 className="text-base font-semibold text-gray-900 truncate lg:text-lg">Custom Lining</h2>
+                                    <p className="hidden mt-0.5 text-xs text-gray-500 truncate sm:block">
+                                        {selection.customLining?.fabric?.name ?? "Choose a lining fabric"}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowLiningPanel(false)}
+                                    title="Back"
+                                    aria-label="Back to accents"
+                                    className="flex items-center justify-center text-gray-500 transition-all duration-200 border border-gray-200 rounded-full shrink-0 w-9 h-9 hover:text-gray-900 hover:border-gray-400 active:scale-95"
+                                >
+                                    <ArrowLeft className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain thin-scrollbar">
+                                <div className="grid grid-cols-2 gap-2 p-4 lg:gap-3 lg:p-5 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                                    {selectedFabric.custom_linings?.map((lining) => (
+                                        <FabricOptionTile
+                                            key={lining.id}
+                                            isSelected={selection.customLining?.id === lining.id}
+                                            onClick={() => handleLiningSelect(lining)}
+                                            onHover={() => prefetchImage(lining.image)}
+                                            image={lining.fabric?.image || lining.image}
+                                            label={lining.fabric?.name || "Lining"}
+                                            isLoading={isPending("lining", lining.id)}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* rail — bottom tab bar below lg, vertical rail from lg */}
@@ -1368,82 +1749,57 @@ const SuitDesigner = () => {
                     className="flex items-center shrink-0 border-t border-gray-100 bg-gray-50 pb-[env(safe-area-inset-bottom)] lg:flex-col lg:w-20 lg:gap-4 lg:py-6 lg:border-t-0 lg:border-l"
                     aria-label="Sections"
                 >
-                    <button
-                        type="button"
+                    <Link
+                        href="/"
+                        title="Back to home"
+                        aria-label="Back to home"
                         className="items-center justify-center hidden w-10 h-10 mb-2 text-gray-500 transition-colors rounded-lg lg:flex hover:bg-gray-100"
-                        aria-label="Menu"
                     >
                         <Menu className="w-5 h-5" />
-                    </button>
+                    </Link>
                     <RailTab id="fabric" icon={Layers} label="Fabric" isActive={activeTab === "fabric"} onSelect={setActiveTab} />
                     <RailTab id="style" icon={Scissors} label="Style" isActive={activeTab === "style"} onSelect={setActiveTab} />
                     <RailTab id="accents" icon={Palette} label="Accents" isActive={activeTab === "accents"} onSelect={setActiveTab} />
                 </nav>
             </aside>
 
-            {/* CUSTOM LINING MODAL — bottom sheet on phones, dialog from sm */}
-            {showLiningModal && (
+            {/* LIGHTBOX — the current design, as large as the screen allows */}
+            {showLightbox && (
                 <div
-                    className="fixed inset-0 z-[1000] flex items-end justify-center sm:items-center bg-black/40 backdrop-blur-sm animate-fade-in"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Your suit, full screen"
+                    className="fixed inset-0 z-[900] bg-white animate-fade-in"
                     onClick={(e) => {
-                        if (e.target === e.currentTarget) setShowLiningModal(false);
+                        if (e.target === e.currentTarget) setShowLightbox(false);
                     }}
                 >
-                    <div
-                        role="dialog"
-                        aria-modal="true"
-                        aria-labelledby="lining-modal-title"
-                        className="w-full sm:max-w-md max-h-[85dvh] flex flex-col bg-white shadow-2xl rounded-t-2xl sm:rounded-xl sm:mx-4 animate-slide-up"
-                    >
-                        <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-gray-100 sm:pt-5 shrink-0">
-                            <div>
-                                <h2 id="lining-modal-title" className="text-lg font-semibold text-gray-900">Select Custom Lining</h2>
-                                <p className="mt-0.5 text-xs text-gray-500">Choose your preferred lining</p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setShowLiningModal(false)}
-                                className="p-1.5 text-gray-400 transition-all duration-200 rounded-lg hover:text-gray-700 hover:bg-gray-100"
-                                aria-label="Close"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-2 p-4 overflow-y-auto sm:gap-3 sm:p-5 pb-[max(1rem,env(safe-area-inset-bottom))] thin-scrollbar">
-                            {selectedFabric.custom_linings?.map((lining) => {
-                                const isSelected = selection.customLining?.id === lining.id;
-                                return (
-                                    <button
-                                        key={lining.id}
-                                        type="button"
-                                        onClick={() => handleLiningSelect(lining)}
-                                        {...hoverHandlers(() => prefetchImage(lining.image))}
-                                        aria-pressed={isSelected}
-                                        className={`relative p-2 sm:p-3 rounded-lg transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900/40 ${
-                                            isSelected ? "shadow-md scale-[1.02]" : "hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"
-                                        }`}
-                                    >
-                                        {isSelected && <SelectedBadge />}
-                                        {isPending("lining", lining.id) && <TileSpinner />}
-                                        <div className="flex items-center justify-center w-full overflow-hidden bg-transparent rounded-md aspect-[4/3]">
-                                            <LazyImage
-                                                src={thumbUrl(lining.fabric?.image || lining.image)}
-                                                alt={lining.fabric?.name || "Lining"}
-                                                className="object-contain w-full h-full"
-                                                fallback={<div className="flex items-center justify-center w-full h-full text-xs text-gray-400">{lining.fabric?.name || "Lining"}</div>}
-                                            />
-                                        </div>
-                                        <div className="mt-2">
-                                            <div className="text-[11px] sm:text-xs font-medium leading-tight text-center text-gray-700 line-clamp-2 lg:line-clamp-none">{lining.fabric?.name || "Lining"}</div>
-                                        </div>
-                                    </button>
-                                );
-                            })}
-                        </div>
+                    <div className="absolute inset-0">
+                        <SuitStage layers={hiresReady ? hiresLayers : layers} dimmed={false} zoom={LIGHTBOX_ZOOM} />
                     </div>
+
+                    {!hiresReady && (
+                        <div className="absolute z-10 flex items-center gap-2 px-3 py-1.5 rounded-full shadow-lg top-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm animate-slide-down">
+                            <Loader2 className="w-3.5 h-3.5 text-gray-900 animate-spin" />
+                            <span className="text-xs font-medium text-gray-700">Loading full detail…</span>
+                        </div>
+                    )}
+
+                    <p className="absolute z-10 px-3 py-1 text-[11px] text-gray-500 -translate-x-1/2 rounded-full bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-1/2 bg-white/80 backdrop-blur-sm pointer-events-none select-none">
+                        Drag or scroll to look around
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => setShowLightbox(false)}
+                        title="Close"
+                        aria-label="Close full screen view"
+                        className="absolute z-10 flex items-center justify-center text-gray-700 transition-all duration-200 bg-white border border-gray-200 rounded-full shadow-md w-11 h-11 top-3 right-3 lg:top-6 lg:right-6 hover:bg-gray-900 hover:text-white hover:border-gray-900 active:scale-95"
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
                 </div>
             )}
+
         </div>
     );
 };

@@ -22,7 +22,7 @@ export default function ResetPassword({ token, email }) {
     };
 
     return (
-        <GuestLayout>
+        <GuestLayout title="Choose a new password" subtitle="Make it at least 8 characters.">
             <Head title="Reset Password" />
 
             <form onSubmit={submit}>
@@ -84,7 +84,7 @@ export default function ResetPassword({ token, email }) {
                 </div>
 
                 <div className="mt-4 flex items-center justify-end">
-                    <PrimaryButton className="ms-4" disabled={processing}>
+                    <PrimaryButton className="ms-4 px-6" disabled={processing}>
                         Reset Password
                     </PrimaryButton>
                 </div>
