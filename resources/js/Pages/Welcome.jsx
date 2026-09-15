@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, memo } from "react";
 import { Head, Link } from "@inertiajs/react";
 import { addToCart, cartCount, summarizeDesign, useCart } from "@/lib/store";
-import { Loader2, Layers, Scissors, Palette, Menu, X, RotateCcw, Maximize2, ArrowLeft, ArrowRight, ShoppingBag, Check, Info, Images } from "lucide-react";
+import { Loader2, Layers, Scissors, Palette, Menu, X, RotateCcw, Maximize2, ArrowLeft, ArrowRight, ShoppingBag, Check, Info, Images, Share2, Heart, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
 const STORAGE_KEY = "custom-tailor.design.v1";
 const CANVAS_TIMEOUT_MS = 8000;
@@ -1351,6 +1351,8 @@ const SuitDesigner = () => {
     const [showLiningPanel, setShowLiningPanel] = useState(false);
     const [showLightbox, setShowLightbox] = useState(false);
     const [infoFabricId, setInfoFabricId] = useState(null);
+    const [stageNotice, setStageNotice] = useState(null);
+    const stageNoticeRef = useRef(null);
     // true once the lightbox's sharper layers are decoded; until then it shows the on-screen ones, enlarged.
     const [hiresReady, setHiresReady] = useState(false);
 
@@ -1546,6 +1548,32 @@ const SuitDesigner = () => {
         bagTimerRef.current = setTimeout(() => setBagNotice(false), 4500);
     };
 
+    const flashStage = (text) => {
+        if (stageNoticeRef.current) clearTimeout(stageNoticeRef.current);
+        setStageNotice(text);
+        stageNoticeRef.current = setTimeout(() => setStageNotice(null), 3000);
+    };
+
+    const handleShare = async () => {
+        const url = window.location.href;
+        try {
+            if (navigator.share) await navigator.share({ title: "My custom suit", url });
+            else {
+                await navigator.clipboard.writeText(url);
+                flashStage("Link copied");
+            }
+        } catch {
+            /* dismissed */
+        }
+    };
+
+    const stepFabric = (dir) => {
+        if (!fabrics?.length || !selection) return;
+        const i = fabrics.findIndex((f) => f.id === selection.fabric.id);
+        setInfoFabricId(null);
+        changeFabric(fabrics[(i + dir + fabrics.length) % fabrics.length]);
+    };
+
     const handleReset = () => {
         if (!fabrics?.length) return;
         clearSavedDesign();
@@ -1651,12 +1679,53 @@ const SuitDesigner = () => {
 
     /* ---------- main render ---------- */
     return (
-        <div className="flex flex-col overflow-hidden bg-white h-dvh max-lg:landscape:flex-row lg:flex-row animate-fade-in">
+        <div className="flex flex-col overflow-hidden bg-[#f7f6f3] h-dvh max-lg:landscape:flex-row lg:flex-row animate-fade-in">
             <Head title="Design your suit" />
 
-            {/* STAGE — on top below lg, on the right from lg */}
-            <main className="relative flex-1 order-1 min-w-0 min-h-0 p-3 max-lg:landscape:order-2 lg:order-2 sm:p-5 lg:p-8">
+            {/* STAGE SIDE — header, suit, and the summary column; on top below lg, on the right from lg */}
+            <main className="relative flex flex-col flex-1 order-1 min-w-0 min-h-0 max-lg:landscape:order-2 lg:order-2">
+            <header className="absolute inset-x-0 top-0 z-30 flex items-center justify-between h-12 px-4 pointer-events-none lg:h-16 lg:px-8 [&>*]:pointer-events-auto">
+                <Link href="/" className="flex items-center gap-3 text-gray-900" aria-label="Back to home">
+                    <span className="text-[22px] font-semibold tracking-tight lg:text-[26px]">Custom Tailor</span>
+                </Link>
+                <div className="flex items-center gap-5 text-gray-900 lg:gap-7">
+                    <button type="button" onClick={handleShare} title="Share" aria-label="Share this design" className="transition-opacity hover:opacity-60">
+                        <Share2 className="w-5 h-5 lg:w-6 lg:h-6" strokeWidth={1.5} />
+                    </button>
+                    <button type="button" onClick={() => flashStage("Saved to this browser")} title="Saved" aria-label="Your design is saved" className="transition-opacity hover:opacity-60">
+                        <Heart className="w-5 h-5 lg:w-6 lg:h-6" strokeWidth={1.5} />
+                    </button>
+                    <Link href={route("cart")} title="View bag" aria-label="View bag" className="relative transition-opacity hover:opacity-60">
+                        <ShoppingBag className="w-5 h-5 lg:w-6 lg:h-6" strokeWidth={1.5} />
+                        {cartCount(bagItems) > 0 && (
+                            <span className="absolute -top-1 -right-1.5 flex items-center justify-center min-w-[1rem] h-4 px-1 text-[10px] font-semibold text-white bg-[#ff8a00] rounded-full">
+                                {cartCount(bagItems)}
+                            </span>
+                        )}
+                    </Link>
+                </div>
+            </header>
+
+            <div className="relative flex flex-1 min-h-0 pt-12 lg:pt-0">
+                <div className="relative flex-1 min-w-0 min-h-0 p-2 sm:p-3 lg:px-6 lg:pt-6 lg:pb-12">
                 <SuitStage layers={layers} dimmed={Boolean(pending)} />
+
+                {fabrics.length > 1 && (
+                    <>
+                        <button type="button" onClick={() => stepFabric(-1)} title="Previous fabric" aria-label="Previous fabric" className="absolute z-30 items-center justify-center hidden w-9 h-9 text-gray-700 bg-white border border-gray-200 rounded-full shadow-sm lg:flex bottom-3 left-6 hover:bg-gray-900 hover:text-white hover:border-gray-900 transition-colors">
+                            <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <button type="button" onClick={() => stepFabric(1)} title="Next fabric" aria-label="Next fabric" className="absolute z-30 items-center justify-center hidden w-9 h-9 text-gray-700 bg-white border border-gray-200 rounded-full shadow-sm lg:flex bottom-3 right-6 hover:bg-gray-900 hover:text-white hover:border-gray-900 transition-colors">
+                            <ChevronRight className="w-4 h-4" />
+                        </button>
+                    </>
+                )}
+
+                {stageNotice && (
+                    <div role="status" className="absolute z-30 px-4 py-2 text-sm text-white -translate-x-1/2 bg-gray-900 rounded-full shadow-lg top-3 left-1/2 animate-slide-down">
+                        {stageNotice}
+                    </div>
+                )}
 
                 {/* FABRIC OVERLAY — pictures and details for one cloth, over the stage only */}
                 {infoFabricId != null && fabrics.find((f) => f.id === infoFabricId) && (
@@ -1677,9 +1746,9 @@ const SuitDesigner = () => {
                     onClick={() => setShowLightbox(true)}
                     title="View full screen"
                     aria-label="View full screen"
-                    className="absolute z-30 flex items-center justify-center w-10 h-10 text-gray-700 transition-all duration-200 bg-white border border-gray-200 rounded-full shadow-md bottom-3 right-3 lg:bottom-6 lg:right-6 lg:w-11 lg:h-11 hover:bg-gray-900 hover:text-white hover:border-gray-900 active:scale-95"
+                    className="absolute z-30 flex items-center justify-center w-10 h-10 text-gray-700 transition-all duration-200 bg-white border border-gray-200 rounded-full shadow-md bottom-3 right-3 lg:hidden hover:bg-gray-900 hover:text-white hover:border-gray-900 active:scale-95"
                 >
-                    <Maximize2 className="w-4 h-4 lg:w-5 lg:h-5" />
+                    <Maximize2 className="w-4 h-4" />
                 </button>
 
                 {pending && (
@@ -1689,7 +1758,7 @@ const SuitDesigner = () => {
                     </div>
                 )}
 
-                <div className="absolute z-30 flex items-center gap-3 bottom-3 left-3 lg:bottom-6 lg:left-6">
+                <div className="absolute z-30 flex items-center gap-3 bottom-3 left-3 lg:hidden">
                     <button
                         type="button"
                         onClick={handleAddToBag}
@@ -1740,9 +1809,42 @@ const SuitDesigner = () => {
                         </div>
                     </div>
                 )}
+                </div>
+
+                {/* SUMMARY — desktop only */}
+                <div className="relative flex-col items-end justify-center hidden w-64 pr-6 pl-2 text-right shrink-0 lg:flex xl:w-72 xl:pr-10">
+                    <h1 className="text-4xl font-light leading-[1.08] tracking-tight text-gray-900 xl:text-5xl">
+                        Your<br />Custom Suit
+                    </h1>
+                    <p className="mt-8 text-3xl font-light tracking-tight text-gray-900 xl:text-4xl tabular-nums">${Math.round(Number(selectedFabric?.price) || 0)}</p>
+                    <p className="mt-1 text-xs text-gray-500">VAT incl.</p>
+                    <button
+                        type="button"
+                        onClick={handleAddToBag}
+                        disabled={Boolean(pending)}
+                        className="w-full max-w-[11.5rem] py-3.5 mt-8 text-lg font-medium text-white transition-all duration-200 bg-[#ff8a00] rounded-full shadow-[0_10px_24px_-10px_rgba(255,138,0,0.7)] hover:bg-[#f07f00] active:scale-[0.98] disabled:opacity-60"
+                    >
+                        Add to cart
+                    </button>
+                    <p className="mt-8 text-[15px] text-gray-700">Order today, receive in 3 weeks.</p>
+                    <p className="mt-4 text-[15px] font-semibold text-gray-900">Free shipping</p>
+
+                    <button
+                        type="button"
+                        onClick={() => setShowLightbox(true)}
+                        aria-label="Zoom"
+                        className="absolute flex flex-col items-center gap-1 text-gray-700 bottom-4 right-8 xl:right-12 group"
+                    >
+                        <span className="flex items-center justify-center w-10 h-10 transition-colors bg-white border border-gray-300 rounded-full group-hover:bg-gray-900 group-hover:text-white group-hover:border-gray-900">
+                            <Plus className="w-4 h-4" />
+                        </span>
+                        <span className="text-[10px] font-semibold tracking-[0.18em] uppercase">Zoom</span>
+                    </button>
+                </div>
+            </div>
             </main>
 
-            {/* PANEL — bottom sheet below lg, sidebar from lg */}
+            {/* PANEL — bottom sheet below lg; rail + slide-out options from lg */}
             <aside
                 className="z-10 flex flex-col order-2 w-full shrink-0 h-[44dvh] md:h-[40dvh] max-lg:landscape:order-1 max-lg:landscape:h-full max-lg:landscape:w-[min(55vw,24rem)] max-lg:landscape:border-t-0 max-lg:landscape:border-r lg:order-1 lg:flex-row lg:h-full lg:w-[26rem] xl:w-[29rem] bg-white border-t border-gray-100 lg:border-t-0 lg:border-r shadow-[0_-6px_24px_rgba(0,0,0,0.06)] lg:shadow-lg"
                 aria-label="Customization options"
