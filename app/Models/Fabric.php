@@ -11,6 +11,7 @@ class Fabric extends Model
     use BustsConfiguratorCache;
 
     protected $fillable = [
+        'sort_order',
         'name',
         'price',
         'image',
@@ -26,42 +27,42 @@ class Fabric extends Model
 
     public function sleeves()
     {
-        return $this->hasMany(Sleeve::class);
+        return $this->hasMany(Sleeve::class)->orderBy('sort_order');
     }
 
     public function sidePockets()
     {
-        return $this->hasMany(SidePocket::class);
+        return $this->hasMany(SidePocket::class)->orderBy('sort_order');
     }
 
     public function chestPockets()
     {
-        return $this->hasMany(ChestPocket::class);
+        return $this->hasMany(ChestPocket::class)->orderBy('sort_order');
     }
 
     public function body()
     {
-        return $this->hasMany(Body::class);
+        return $this->hasMany(Body::class)->orderBy('sort_order');
     }
 
     public function lapels()
     {
-        return $this->hasMany(Lapel::class);
+        return $this->hasMany(Lapel::class)->orderBy('sort_order');
     }
 
 
     public function bodyButtons()
     {
-        return $this->hasMany(BodyButton::class);
+        return $this->hasMany(BodyButton::class)->orderBy('sort_order');
     }
 
     public function customLinings()
     {
-        return $this->hasMany(CustomLining::class);
+        return $this->hasMany(CustomLining::class)->orderBy('sort_order');
     }
 
     public function defaultLinings(): HasMany
     {
-        return $this->hasMany(DefaultLining::class);
+        return $this->hasMany(DefaultLining::class)->orderBy('sort_order');
     }
 }

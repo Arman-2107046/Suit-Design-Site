@@ -108,6 +108,8 @@ class SuitConfiguratorController extends Controller
             'body.bodyType.bodyButtons.buttonImage',
         ])
             ->where('status', true)
+            ->orderBy('sort_order')
+            ->orderBy('id')
             ->get();
 
         return [

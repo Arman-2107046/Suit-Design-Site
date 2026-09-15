@@ -15,7 +15,12 @@ class FabricsTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->reorderable('sort_order')
+            ->defaultSort('sort_order')
             ->columns([
+                TextColumn::make('sort_order')
+                    ->label('#')
+                    ->sortable(),
                 TextColumn::make('name')
                     ->searchable(),
                 TextColumn::make('price')

@@ -15,7 +15,12 @@ class SidePocketsTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->reorderable('sort_order')
+            ->defaultSort('sort_order')
             ->columns([
+                TextColumn::make('sort_order')
+                    ->label('#')
+                    ->sortable(),
                 TextColumn::make('fabric.name')
                     ->searchable(),
                 TextColumn::make('sidePocketType.name')

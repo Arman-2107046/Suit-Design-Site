@@ -38,12 +38,12 @@ class Body extends Model
 
     public function lapels(): HasMany
     {
-        return $this->hasMany(Lapel::class);
+        return $this->hasMany(Lapel::class)->orderBy('sort_order');
     }
 
     public function bodyButtons(): HasMany
     {
-        return $this->hasMany(BodyButton::class);
+        return $this->hasMany(BodyButton::class)->orderBy('sort_order');
     }
 
 }

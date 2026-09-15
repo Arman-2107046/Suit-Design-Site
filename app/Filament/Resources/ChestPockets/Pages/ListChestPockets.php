@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ChestPockets\Pages;
 
+use App\Filament\Concerns\BustsCacheOnReorder;
 use App\Filament\Resources\ChestPockets\ChestPocketResource;
 use App\Services\BulkUpload\ChestPocketsUploader;
 use Filament\Actions\Action;
@@ -11,6 +12,8 @@ use Filament\Resources\Pages\ListRecords;
 
 class ListChestPockets extends ListRecords
 {
+    use BustsCacheOnReorder;
+
     protected static string $resource = ChestPocketResource::class;
 
     protected function getHeaderActions(): array

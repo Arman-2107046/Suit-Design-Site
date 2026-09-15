@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Lapels\Pages;
 
+use App\Filament\Concerns\BustsCacheOnReorder;
 use App\Filament\Imports\LapelImporter;
 use App\Filament\Resources\Lapels\LapelResource;
 use App\Models\Body;
@@ -18,6 +19,8 @@ use Filament\Resources\Pages\ListRecords;
 
 class ListLapels extends ListRecords
 {
+    use BustsCacheOnReorder;
+
     protected static string $resource = LapelResource::class;
 
     protected function getHeaderActions(): array

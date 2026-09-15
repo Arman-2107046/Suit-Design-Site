@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\SidePockets\Pages;
 
+use App\Filament\Concerns\BustsCacheOnReorder;
 use App\Filament\Imports\SidePocketImporter;
 use App\Filament\Resources\SidePockets\SidePocketResource;
 use App\Models\Fabric;
@@ -15,6 +16,8 @@ use Filament\Resources\Pages\ListRecords;
 
 class ListSidePockets extends ListRecords
 {
+    use BustsCacheOnReorder;
+
     protected static string $resource = SidePocketResource::class;
 
     protected function getHeaderActions(): array

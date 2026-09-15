@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\BodyTypes\Pages;
 
+use App\Filament\Concerns\BustsCacheOnReorder;
 use App\Filament\Resources\BodyTypes\BodyTypeResource;
 use App\Models\BodyType;
 use Filament\Actions\Action;
@@ -11,6 +12,8 @@ use Filament\Resources\Pages\ListRecords;
 
 class ListBodyTypes extends ListRecords
 {
+    use BustsCacheOnReorder;
+
     protected static string $resource = BodyTypeResource::class;
 
     protected function getHeaderActions(): array

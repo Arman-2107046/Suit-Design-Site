@@ -18,15 +18,15 @@ class BodyType extends Model
 
     public function bodies(): HasMany
     {
-        return $this->hasMany(Body::class);
+        return $this->hasMany(Body::class)->orderBy('sort_order');
     }
     public function bodyButtons(): HasMany
     {
-        return $this->hasMany(BodyButton::class);
+        return $this->hasMany(BodyButton::class)->orderBy('sort_order');
     }
 
     public function defaultLinings(): HasMany
     {
-        return $this->hasMany(DefaultLining::class);
+        return $this->hasMany(DefaultLining::class)->orderBy('sort_order');
     }
 }

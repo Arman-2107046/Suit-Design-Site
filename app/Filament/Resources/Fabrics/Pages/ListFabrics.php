@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Fabrics\Pages;
 
+use App\Filament\Concerns\BustsCacheOnReorder;
 use App\Filament\Imports\FabricImporter;
 use App\Filament\Resources\Fabrics\FabricResource;
 use App\Models\Fabric;
@@ -13,7 +14,10 @@ use Filament\Resources\Pages\ListRecords;
 
 class ListFabrics extends ListRecords
 {
+    use BustsCacheOnReorder;
+
     protected static string $resource = FabricResource::class;
+
 
     protected function getHeaderActions(): array
     {

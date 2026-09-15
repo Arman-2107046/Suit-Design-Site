@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ChestPocketTypes\Pages;
 
+use App\Filament\Concerns\BustsCacheOnReorder;
 use App\Filament\Resources\ChestPocketTypes\ChestPocketTypeResource;
 use App\Models\ChestPocketType;
 use Filament\Actions\Action;
@@ -11,6 +12,8 @@ use Filament\Resources\Pages\ListRecords;
 
 class ListChestPocketTypes extends ListRecords
 {
+    use BustsCacheOnReorder;
+
     protected static string $resource = ChestPocketTypeResource::class;
 
 
