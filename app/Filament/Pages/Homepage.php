@@ -25,7 +25,9 @@ class Homepage extends Page
 
     protected static ?string $navigationLabel = 'Homepage';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Management';
+    protected static string|\UnitEnum|null $navigationGroup = 'Content';
+
+    protected static ?int $navigationSort = 1;
 
     protected static ?string $title = 'Homepage';
 

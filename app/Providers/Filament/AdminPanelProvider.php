@@ -32,6 +32,7 @@ class AdminPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Blue,
             ])
+            ->navigationGroups(['Sales', 'Fabrics', 'Jacket', 'Lapels', 'Pockets', 'Linings', 'Content', 'Support', 'Tools'])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
@@ -39,8 +40,7 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
             ->widgets([
-                AccountWidget::class,
-                // FilamentInfoWidget::class,
+                //
             ])
             ->middleware([
                 EncryptCookies::class,

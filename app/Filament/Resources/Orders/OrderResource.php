@@ -37,6 +37,8 @@ class OrderResource extends Resource
 
     protected static ?int $navigationSort = 1;
 
+
+
     public static function getNavigationBadge(): ?string
     {
         $open = Order::where('status', OrderStatus::Pending)->count();

@@ -27,6 +27,10 @@ class FabricImageResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedPhoto;
 
+    protected static string|\UnitEnum|null $navigationGroup = 'Fabrics';
+
+    protected static ?int $navigationSort = 3;
+
     protected static ?string $navigationLabel = 'Fabric pictures';
 
     protected static ?string $modelLabel = 'fabric picture';

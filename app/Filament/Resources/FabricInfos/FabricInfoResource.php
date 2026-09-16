@@ -32,6 +32,10 @@ class FabricInfoResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedInformationCircle;
 
+    protected static string|\UnitEnum|null $navigationGroup = 'Fabrics';
+
+    protected static ?int $navigationSort = 2;
+
     protected static ?string $navigationLabel = 'Fabric info';
 
     protected static ?string $modelLabel = 'fabric info';

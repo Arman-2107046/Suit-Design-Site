@@ -18,7 +18,7 @@ class BulkUpload extends Page
     protected static ?string $navigationLabel = 'Bulk Upload';
 
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Management';
+    protected static string|\UnitEnum|null $navigationGroup = 'Tools';
 
 
 
