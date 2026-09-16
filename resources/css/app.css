@@ -151,3 +151,16 @@ html { scroll-behavior: smooth; }
 .thin-scrollbar-x::-webkit-scrollbar { height: 6px; }
 .thin-scrollbar-x::-webkit-scrollbar-track { background: #e5e7eb; border-radius: 9999px; }
 .thin-scrollbar-x::-webkit-scrollbar-thumb { background: #9ca3af; border-radius: 9999px; }
+
+/* Rich text from the admin (pages, FAQ answers) */
+.prose-site > * + * { margin-top: 1em; }
+.prose-site h2 { font-size: 1.75rem; font-weight: 300; letter-spacing: -0.02em; line-height: 1.15; color: #111; margin-top: 2em; }
+.prose-site h3 { font-size: 1.25rem; font-weight: 500; letter-spacing: -0.01em; color: #111; margin-top: 1.6em; }
+.prose-site a { color: #111; text-decoration: underline; text-underline-offset: 4px; }
+.prose-site ul, .prose-site ol { padding-left: 1.4em; }
+.prose-site ul { list-style: disc; }
+.prose-site ol { list-style: decimal; }
+.prose-site li + li { margin-top: 0.4em; }
+.prose-site blockquote { border-left: 2px solid #111; padding-left: 1.25em; font-size: 1.15em; font-weight: 300; color: #111; }
+.prose-site strong { color: #111; font-weight: 600; }
+.prose-site img { border-radius: 1rem; }

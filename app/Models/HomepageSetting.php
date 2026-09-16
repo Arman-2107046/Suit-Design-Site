@@ -45,6 +45,23 @@ class HomepageSetting extends Model
         return static::query()->firstOrCreate([]);
     }
 
+    /** What the shared footer needs on every page. */
+    public function toFooterProps(): array
+    {
+        $socials = [];
+        foreach (self::SOCIALS as $network) {
+            if (filled($this->{"{$network}_url"})) {
+                $socials[$network] = $this->{"{$network}_url"};
+            }
+        }
+
+        return [
+            'socials' => (object) $socials,
+            'payment_logos' => array_column($this->payment_logos ?? [], 'url'),
+            'shipping_logos' => array_column($this->shipping_logos ?? [], 'url'),
+        ];
+    }
+
     /** @return array{images: array<string, ?string>, video: ?string, socials: array<string, string>, payment_logos: string[], shipping_logos: string[]} */
     public function toHomepageProps(): array
     {

@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\HomepageSetting;
+use App\Models\SiteSetting;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -37,6 +38,11 @@ class HandleInertiaRequests extends Middleware
             ],
             'flash' => fn () => [
                 'profile' => $request->session()->get('profile'),
+                'sent' => $request->session()->get('sent'),
+            ],
+            'site' => fn () => [
+                ...HomepageSetting::current()->toFooterProps(),
+                'contact' => SiteSetting::current()->only(['contact_email', 'contact_phone']),
             ],
             'brand' => fn () => [
                 'heroImage' => $request->routeIs('login', 'register', 'password.*', 'verification.*')

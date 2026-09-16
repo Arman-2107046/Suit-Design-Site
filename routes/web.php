@@ -3,6 +3,7 @@
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\SupportController;
 use App\Models\HomepageSetting;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -31,6 +32,15 @@ Route::post('/checkout/body-profile', [CheckoutController::class, 'storeBodyProf
 Route::get('/checkout', [CheckoutController::class, 'index'])->name('checkout');
 Route::post('/checkout', [CheckoutController::class, 'store'])->name('checkout.store');
 Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
+
+Route::get('/contact', [SupportController::class, 'contact'])->name('contact');
+Route::post('/contact', [SupportController::class, 'sendMessage'])->middleware('throttle:10,1')->name('contact.send');
+Route::get('/samples', [SupportController::class, 'samples'])->name('samples');
+Route::post('/samples', [SupportController::class, 'requestSamples'])->middleware('throttle:10,1')->name('samples.request');
+Route::get('/track', [SupportController::class, 'track'])->name('track');
+Route::post('/track', [SupportController::class, 'lookup'])->middleware('throttle:20,1')->name('track.lookup');
+Route::get('/faqs', [SupportController::class, 'faqs'])->name('faqs');
+Route::get('/p/{page}', [SupportController::class, 'page'])->name('page');
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
