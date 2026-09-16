@@ -778,7 +778,7 @@ const FabricOptionTile = memo(function FabricOptionTile({ isSelected, onClick, o
                                 </span>
                             )}
                             <span className="absolute inset-0 bg-black/25 transition-opacity duration-300 group-hover:opacity-0 group-focus-within:opacity-0" />
-                            <span className="absolute inset-0 flex items-center justify-center px-2 text-center text-white font-script text-[24px] lg:text-[28px] leading-[0.95] drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)] transition-all duration-300 group-hover:opacity-0 group-hover:translate-y-1 group-focus-within:opacity-0">
+                            <span className="absolute inset-0 flex items-center justify-center px-2 text-center text-white font-script text-[17px] lg:text-[19px] leading-[0.95] drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)] transition-all duration-300 group-hover:opacity-0 group-hover:translate-y-1 group-focus-within:opacity-0">
                                 {label}
                             </span>
                         </>
@@ -1871,7 +1871,9 @@ const SuitDesigner = () => {
 
             {/* PANEL — bottom sheet below lg; rail + slide-out options from lg */}
             <aside
-                className="z-10 flex flex-col order-2 w-full shrink-0 h-[44dvh] md:h-[40dvh] max-lg:landscape:order-1 max-lg:landscape:h-full max-lg:landscape:w-[min(55vw,24rem)] max-lg:landscape:border-t-0 max-lg:landscape:border-r lg:order-1 lg:flex-row lg:h-full lg:w-[26rem] xl:w-[29rem] bg-white border-t border-gray-100 lg:border-t-0 lg:border-r shadow-[0_-6px_24px_rgba(0,0,0,0.06)] lg:shadow-lg"
+                className={`z-10 flex flex-col order-2 w-full shrink-0 h-[44dvh] md:h-[40dvh] max-lg:landscape:order-1 max-lg:landscape:h-full max-lg:landscape:w-[min(55vw,24rem)] max-lg:landscape:border-t-0 max-lg:landscape:border-r lg:order-1 lg:flex-row lg:h-full bg-white border-t border-gray-100 lg:border-t-0 lg:border-r shadow-[0_-6px_24px_rgba(0,0,0,0.06)] lg:shadow-lg ${
+                    activeTab === "fabric" ? "lg:w-[31rem] xl:w-[34rem]" : "lg:w-[26rem] xl:w-[29rem]"
+                }`}
                 aria-label="Customization options"
             >
                 {/* content */}
@@ -1909,7 +1911,7 @@ const SuitDesigner = () => {
                     <div ref={panelScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain thin-scrollbar">
                         {activeTab === "fabric" && (
                             <div key="fabric" className="p-4 lg:p-5 animate-slide-in-left">
-                                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-2 lg:gap-3">
+                                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-3 lg:gap-3">
                                     {fabrics.map((fabric) => (
                                         <FabricOptionTile
                                             key={fabric.id}
