@@ -671,25 +671,35 @@ const Split = ({ photo, alt, tone, flip = false, title, children, cta, ctaHref, 
 );
 
 const COLLAGE = [
-    "top-[6%] left-[14%] w-[26%] aspect-[3/2]",
-    "top-[36%] left-[5%] w-[16%] aspect-[3/4]",
-    "top-[30%] left-[36%] w-[13%] aspect-[3/4]",
-    "top-[2%] right-[3%] w-[14%] aspect-[3/4]",
-    "bottom-[3%] right-[10%] w-[20%] aspect-[4/3]",
+    "top-[4%] left-[14%] w-[24%] aspect-[3/4]",
+    "top-[40%] left-[2%] w-[15%] aspect-[3/4]",
+    "top-[24%] left-[42%] w-[14%] aspect-[3/4]",
+    "top-[2%] right-[2%] w-[14%] aspect-[3/4]",
+    "bottom-[2%] right-[14%] w-[22%] aspect-[4/3]",
 ];
 
-const Collage = ({ fabrics }) => (
+/* One real-life photo per fabric — the first — scattered like the reference, until the slots are full. */
+function collagePictures(fabrics) {
+    return fabrics
+        .map((fabric) => realLifeOf(fabric)[0] && { ...realLifeOf(fabric)[0], key: fabric.id })
+        .filter(Boolean)
+        .slice(0, COLLAGE.length);
+}
+
+const Collage = ({ fabrics }) => {
+    const pictures = collagePictures(fabrics);
+    return (
     <section className="relative overflow-hidden bg-[#b7583f] text-white">
         <div className="relative grid px-5 py-20 mx-auto max-w-[1600px] sm:px-8 lg:px-12 lg:grid-cols-2 lg:min-h-[640px] lg:py-28">
             <div className="relative hidden lg:block" aria-hidden="true">
-                {fabrics.slice(0, COLLAGE.length).map((fabric, i) => (
+                {pictures.map((picture, i) => (
                     <div
-                        key={fabric.id}
+                        key={picture.key}
                         className={`absolute overflow-hidden shadow-[0_24px_60px_-24px_rgba(0,0,0,0.5)] ${COLLAGE[i]}`}
                         data-reveal
                         style={{ transitionDelay: `${i * 90}ms` }}
                     >
-                        <img src={swatchUrl(fabric.image, 600)} alt="" className="object-cover w-full h-full" loading="lazy" />
+                        <img src={swatchUrl(picture.url, 700)} alt={picture.caption || ""} className="object-cover w-full h-full" loading="lazy" />
                     </div>
                 ))}
             </div>
@@ -704,8 +714,8 @@ const Collage = ({ fabrics }) => (
                         feel confident with our Perfect Fit Guarantee.
                     </p>
                     <div className="flex gap-3 mt-8 lg:hidden" aria-hidden="true">
-                        {fabrics.slice(0, 3).map((fabric) => (
-                            <img key={fabric.id} src={swatchUrl(fabric.image, 400)} alt="" className="object-cover w-1/3 aspect-[4/3] shadow-lg" />
+                        {pictures.slice(0, 3).map((picture) => (
+                            <img key={picture.key} src={swatchUrl(picture.url, 400)} alt={picture.caption || ""} className="object-cover w-1/3 aspect-[3/4] shadow-lg" />
                         ))}
                     </div>
                     <div className="mt-8">
@@ -717,7 +727,9 @@ const Collage = ({ fabrics }) => (
             </div>
         </div>
     </section>
-);
+
+    );
+};
 
 const FOOTER_LINKS = [
     { title: "Custom suits", links: [["Design your suit", "/design"], ["Fabrics", "#fabrics"], ["How it works", "#how-it-works"]] },
