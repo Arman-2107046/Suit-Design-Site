@@ -1,9 +1,11 @@
 <?php
 
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\JournalController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SupportController;
+use App\Models\BlogPost;
 use App\Models\HomepageSetting;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -11,6 +13,7 @@ use App\Http\Controllers\Api\SuitConfiguratorController;
 
 Route::get('/', fn () => Inertia::render('Home', [
     'homepage' => HomepageSetting::current()->toHomepageProps(),
+    'stories' => BlogPost::published()->with(['category', 'author'])->withCount(['likes', 'approvedComments'])->orderByDesc('published_at')->limit(3)->get()->map->toCardArray(),
 ]))->name('home');
 
 Route::get('/design', fn () => Inertia::render('Welcome'))->name('design');
@@ -41,6 +44,12 @@ Route::get('/track', [SupportController::class, 'track'])->name('track');
 Route::post('/track', [SupportController::class, 'lookup'])->middleware('throttle:20,1')->name('track.lookup');
 Route::get('/faqs', [SupportController::class, 'faqs'])->name('faqs');
 Route::get('/p/{page}', [SupportController::class, 'page'])->name('page');
+
+Route::get('/journal', [JournalController::class, 'index'])->name('journal');
+Route::get('/journal/feed', [JournalController::class, 'feed'])->name('journal.feed');
+Route::get('/journal/{post}', [JournalController::class, 'show'])->name('journal.show');
+Route::post('/journal/{post}/comments', [JournalController::class, 'comment'])->middleware('throttle:10,1')->name('journal.comment');
+Route::post('/journal/{post}/like', [JournalController::class, 'like'])->middleware('throttle:60,1')->name('journal.like');
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

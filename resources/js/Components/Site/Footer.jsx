@@ -41,7 +41,7 @@ const SOCIAL_LABELS = { instagram: "Instagram", facebook: "Facebook", x: "X", pi
 
 const FOOTER_LINKS = [
     { title: "Custom suits", links: [["Design your suit", "/design"], ["Fabrics", "/#fabrics"], ["How it works", "/#how-it-works"]] },
-    { title: "Company", links: [["About us", "/p/about-us"], ["Perfect Fit Guarantee", "/p/perfect-fit-guarantee"]] },
+    { title: "Company", links: [["About us", "/p/about-us"], ["Perfect Fit Guarantee", "/p/perfect-fit-guarantee"], ["The Journal", "/journal"]] },
     { title: "Support", links: [["Contact us", "/contact"], ["Order fabric samples", "/samples"], ["Track order", "/track"], ["FAQs", "/faqs"]] },
 ];
 

@@ -566,7 +566,55 @@ const Collage = ({ fabrics }) => {
 /* ------------------------------------------------------------------ */
 /*  Page                                                               */
 /* ------------------------------------------------------------------ */
-export default function Home({ homepage }) {
+/* ------------------------------------------------------------------ */
+/*  From the Journal                                                   */
+/* ------------------------------------------------------------------ */
+const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "");
+
+const Journal = ({ stories }) => {
+    if (!stories?.length) return null;
+    const [lead, ...rest] = stories;
+    return (
+        <section className="py-16 bg-white sm:py-20 lg:py-28">
+            <div className="px-5 mx-auto max-w-[1600px] sm:px-8 lg:px-12">
+                <div className="flex items-end justify-between gap-6" data-reveal>
+                    <div>
+                        <Eyebrow>The Journal</Eyebrow>
+                        <Title className="mt-3">Notes from the atelier</Title>
+                    </div>
+                    <Link href="/journal" className="hidden text-sm text-gray-500 transition-colors sm:block hover:text-gray-900">All stories →</Link>
+                </div>
+                <div className="grid gap-10 mt-12 lg:grid-cols-12" data-reveal>
+                    <Link href={`/journal/${lead.slug}`} className="block group lg:col-span-7">
+                        <div className="relative overflow-hidden rounded-3xl bg-[#efece6] aspect-[16/10]">
+                            {lead.cover && <img src={swatchUrl(lead.cover, 1600)} alt="" loading="lazy" className="absolute inset-0 object-cover w-full h-full transition-transform duration-[1200ms] ease-out group-hover:scale-105" />}
+                        </div>
+                        <p className="mt-5 text-xs text-gray-500">{lead.category ? `${lead.category.name} · ` : ""}{fmtDate(lead.published_at)} · {lead.reading_minutes} min read</p>
+                        <h3 className="mt-2 text-3xl font-light tracking-tight text-gray-900 text-balance sm:text-4xl">{lead.title}</h3>
+                        <p className="mt-3 text-[15px] leading-relaxed text-gray-600 line-clamp-2">{lead.excerpt}</p>
+                    </Link>
+                    <div className="flex flex-col gap-8 lg:col-span-5">
+                        {rest.map((story) => (
+                            <Link key={story.slug} href={`/journal/${story.slug}`} className="flex gap-5 group">
+                                <div className="relative w-32 overflow-hidden rounded-2xl shrink-0 bg-[#efece6] aspect-[4/3] sm:w-40">
+                                    {story.cover && <img src={swatchUrl(story.cover, 480)} alt="" loading="lazy" className="absolute inset-0 object-cover w-full h-full transition-transform duration-700 group-hover:scale-105" />}
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-xs text-gray-500">{story.category ? `${story.category.name} · ` : ""}{story.reading_minutes} min read</p>
+                                    <h3 className="mt-1 text-xl font-light tracking-tight text-gray-900 transition-colors group-hover:text-gray-600">{story.title}</h3>
+                                    <p className="mt-1 text-sm text-gray-600 line-clamp-2">{story.excerpt}</p>
+                                </div>
+                            </Link>
+                        ))}
+                        <Link href="/journal" className="self-start btn-ink btn-ink--outline sm:hidden">All stories <ArrowRight className="w-4 h-4" /></Link>
+                    </div>
+                </div>
+            </div>
+        </section>
+    );
+};
+
+export default function Home({ homepage, stories = [] }) {
     const user = usePage().props.auth?.user ?? null;
     const socials = homepage?.socials ?? {};
     const images = homepage?.images ?? {};
@@ -609,6 +657,7 @@ export default function Home({ homepage }) {
                 <Details fabric={featured} />
                 <Designer image={images.designer} video={homepage?.video} />
                 <Process />
+                <Journal stories={stories} />
                 <Split
                     photo={images.planet}
                     alt="Rolls of natural fabric"

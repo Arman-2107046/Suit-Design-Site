@@ -164,3 +164,21 @@ html { scroll-behavior: smooth; }
 .prose-site blockquote { border-left: 2px solid #111; padding-left: 1.25em; font-size: 1.15em; font-weight: 300; color: #111; }
 .prose-site strong { color: #111; font-weight: 600; }
 .prose-site img { border-radius: 1rem; }
+
+/* Journal article body — set in a serif, measured for reading */
+.prose-journal { font-family: 'Newsreader', Georgia, serif; font-size: 1.2rem; line-height: 1.75; color: #1f2937; max-width: 42rem; margin-inline: auto; }
+.prose-journal > * + * { margin-top: 1.4em; }
+.prose-journal > p:first-of-type::first-letter { float: left; font-size: 3.6em; line-height: 0.85; padding: 0.08em 0.12em 0 0; font-weight: 500; color: #111; }
+.prose-journal h2 { font-family: 'Figtree', system-ui, sans-serif; font-size: 1.9rem; font-weight: 300; letter-spacing: -0.02em; line-height: 1.15; color: #111; margin-top: 2.4em; }
+.prose-journal h3 { font-family: 'Figtree', system-ui, sans-serif; font-size: 1.35rem; font-weight: 500; letter-spacing: -0.01em; color: #111; margin-top: 2em; }
+.prose-journal a { color: #111; text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 1px; }
+.prose-journal strong { color: #111; font-weight: 500; }
+.prose-journal ul, .prose-journal ol { padding-left: 1.4em; }
+.prose-journal ul { list-style: disc; }
+.prose-journal ol { list-style: decimal; }
+.prose-journal li + li { margin-top: 0.5em; }
+.prose-journal blockquote { margin-top: 2em; padding-left: 1.5em; border-left: 2px solid #111; font-size: 1.45rem; font-style: italic; line-height: 1.4; color: #111; }
+.prose-journal img { display: block; width: 100%; height: auto; border-radius: 1.25rem; margin-top: 2.2em; }
+.prose-journal img + em, .prose-journal figcaption { display: block; margin-top: 0.6em; font-family: 'Figtree', system-ui, sans-serif; font-size: 0.8rem; color: #9ca3af; text-align: center; }
+.prose-journal hr { border: 0; text-align: center; margin: 3em 0; }
+.prose-journal hr::before { content: "· · ·"; letter-spacing: 0.6em; color: #9ca3af; }

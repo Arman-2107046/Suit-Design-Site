@@ -14,6 +14,7 @@ export default {
         extend: {
             fontFamily: {
                 sans: ['Figtree', ...defaultTheme.fontFamily.sans],
+                serif: ['Newsreader', 'Georgia', ...defaultTheme.fontFamily.serif],
             },
             keyframes: {
                 'fade-in': {

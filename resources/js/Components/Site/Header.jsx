@@ -7,6 +7,7 @@ const NAV = [
     { label: "Custom suits", href: "/design", inertia: true },
     { label: "Fabrics", href: "#fabrics" },
     { label: "How it works", href: "#how-it-works" },
+    { label: "Journal", href: "/journal", inertia: true },
 ];
 
 const NavAnchor = ({ item, ...rest }) =>

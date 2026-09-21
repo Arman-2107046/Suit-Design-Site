@@ -39,6 +39,7 @@ class HandleInertiaRequests extends Middleware
             'flash' => fn () => [
                 'profile' => $request->session()->get('profile'),
                 'sent' => $request->session()->get('sent'),
+                'comment_sent' => $request->session()->get('comment_sent'),
             ],
             'site' => fn () => [
                 ...HomepageSetting::current()->toFooterProps(),

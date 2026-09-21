@@ -32,7 +32,7 @@ class AdminPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Blue,
             ])
-            ->navigationGroups(['Sales', 'Fabrics', 'Jacket', 'Lapels', 'Pockets', 'Linings', 'Content', 'Support', 'Tools'])
+            ->navigationGroups(['Sales', 'Fabrics', 'Jacket', 'Lapels', 'Pockets', 'Linings', 'Journal', 'Content', 'Support', 'Tools'])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
