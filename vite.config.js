@@ -7,6 +7,8 @@ export default defineConfig({
         laravel({
             input: 'resources/js/app.jsx',
             refresh: true,
+            // Out of the web root: see AppServiceProvider::boot().
+            hotFile: 'storage/vite.hot',
         }),
         react(),
     ],

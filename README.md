@@ -206,11 +206,17 @@ Runs against an in-memory SQLite database. Coverage includes guest and account c
 
 ## Deploying
 
-1. Set the environment keys above; use a real `MAIL_MAILER` and a **signed** admin session (`Authenticate::class` enabled).
-2. `composer install --no-dev --optimize-autoloader && npm ci && npm run build`
-3. `php artisan migrate --force`
-4. `php artisan optimize` (and `filament:optimize` if you use it)
-5. Raise `upload_max_filesize` / `post_max_size` only if you need larger *single* admin uploads; bulk images and the video never pass through PHP.
+```bash
+composer install --no-dev --optimize-autoloader
+npm ci && npm run build        # writes public/build; needs Node ^20.19 || >=22.12
+php artisan migrate --force
+php artisan optimize           # config, route and view cache
+```
+
+- **`APP_ENV=production` and `APP_DEBUG=false`** in the server's `.env`, with `APP_URL` set to the real domain. Debug mode on a public host leaks stack traces containing your credentials.
+- **Front-end assets** come from `public/build`, which is gitignored — so either run `npm run build` on the server or upload the folder. There is no dev-server fallback in production: `npm run dev` writes its marker to `storage/vite.hot`, outside the web root, and any environment other than `local` ignores that file outright (see `AppServiceProvider::boot()`). If a live site ever requests `localhost:5173`, an old `public/hot` is still sitting on the server — delete it.
+- Every page component needs its own manifest entry, so **pages must not import other pages** — put anything shared in `resources/js/Components`. `php artisan test` catches a violation, because the suite renders against the real manifest.
+- Raise `upload_max_filesize` / `post_max_size` only if you need larger *single* admin uploads; bulk images and the video never pass through PHP.
 
 ---
 

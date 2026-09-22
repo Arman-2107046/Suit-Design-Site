@@ -2,7 +2,7 @@ import InputError from "@/Components/InputError";
 import { Footer } from "@/Components/Site/Footer";
 import { Header } from "@/Components/Site/Header";
 import { cdn } from "@/Layouts/SiteLayout";
-import { StoryCard } from "@/Pages/Journal/Index";
+import { StoryCard } from "@/Components/Site/StoryCard";
 import { Head, Link, useForm, usePage } from "@inertiajs/react";
 import { ArrowRight, Check, Heart, MessageCircle, Share2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
