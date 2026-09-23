@@ -143,8 +143,8 @@ html { scroll-behavior: smooth; }
 .slider::-moz-range-track { height: 1px; background: #d1d5db; }
 .slider:focus-visible::-webkit-slider-thumb { outline: 2px solid rgba(17, 17, 17, 0.35); outline-offset: 3px; }
 
-/* Script face for fabric names on swatches */
-.font-script { font-family: 'Great Vibes', 'Brush Script MT', cursive; font-weight: 400; letter-spacing: 0.01em; }
+/* Engraved script for fabric names on swatches — the maison-label look */
+.font-script { font-family: 'Pinyon Script', 'Snell Roundhand', 'Brush Script MT', cursive; font-weight: 400; letter-spacing: 0.02em; }
 
 /* Horizontal strip scrollbar (real-life pictures) */
 .thin-scrollbar-x { scrollbar-width: thin; scrollbar-color: #9ca3af #e5e7eb; }

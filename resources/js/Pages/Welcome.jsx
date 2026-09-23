@@ -748,6 +748,13 @@ const TILE_W_WIDE = "w-[8.5rem] sm:w-[9.5rem] lg:w-auto";
 const tileClass = (isSelected, width = TILE_W) =>
     `${TILE_BASE} ${width} ${isSelected ? "shadow-md scale-[1.02] ring-1 ring-gray-900/80" : "hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"}`;
 
+/* A fabric swatch is the card: the cloth runs edge to edge, its name and price sit underneath. */
+const FABRIC_TILE_BASE =
+    "relative w-full transition-transform duration-300 ease-out " +
+    "focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900/40 focus-visible:rounded-lg";
+
+const fabricTileClass = (isSelected) => `${FABRIC_TILE_BASE} ${isSelected ? "" : "hover:-translate-y-0.5 active:scale-[0.99]"}`;
+
 const hoverHandlers = (onHover) => (onHover ? { onMouseEnter: onHover, onFocus: onHover, onPointerDown: onHover } : {});
 
 /*
@@ -759,42 +766,54 @@ const hoverHandlers = (onHover) => (onHover ? { onMouseEnter: onHover, onFocus: 
 const FabricOptionTile = memo(function FabricOptionTile({ isSelected, onClick, onHover, onInfo, image, label, price, isNew = false, isLoading }) {
     const overlay = Boolean(onInfo);
     return (
-        <div className={`${tileClass(isSelected, "w-full")} group`} {...hoverHandlers(onHover)}>
-            {isSelected && <SelectedBadge />}
+        <div className={`${overlay ? fabricTileClass(isSelected) : tileClass(isSelected, "w-full")} group`} {...hoverHandlers(onHover)}>
+            {isSelected && !overlay && <SelectedBadge />}
             {isLoading && <TileSpinner />}
             <button type="button" onClick={onClick} aria-pressed={isSelected} aria-label={label} className="block w-full focus:outline-none">
-                <div className={`relative w-full flex items-center justify-center bg-[#efece6] rounded-md overflow-hidden ${overlay ? "aspect-[4/3]" : "aspect-[4/3]"}`}>
+                <div
+                    className={`relative w-full flex items-center justify-center bg-[#efece6] overflow-hidden ${
+                        overlay
+                            ? `aspect-[40/27] rounded-lg ${isSelected ? "ring-1 ring-gray-900 ring-offset-2 ring-offset-white" : ""}`
+                            : "aspect-[4/3] rounded-md"
+                    }`}
+                >
                     <SwatchImage
                         src={thumbUrl(image)}
                         alt=""
                         className="object-cover w-full h-full"
                         fallback={<div className="flex items-center justify-center w-full h-full text-xs text-gray-400">{label || "No image"}</div>}
                     />
-                    {overlay && (
-                        <>
-                            {isNew && (
-                                <span className="absolute top-0 left-0 px-2 py-0.5 text-[9px] font-bold tracking-widest text-white uppercase bg-red-600 rounded-br-md">
-                                    New
-                                </span>
-                            )}
-                            <span className="absolute inset-0 bg-black/25 transition-opacity duration-300 group-hover:opacity-0 group-focus-within:opacity-0" />
-                            <span className="absolute inset-0 flex items-center justify-center px-2 text-center text-white font-script text-[17px] lg:text-[19px] leading-[0.95] drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)] transition-all duration-300 group-hover:opacity-0 group-hover:translate-y-1 group-focus-within:opacity-0">
-                                {label}
-                            </span>
-                        </>
+                    {overlay && isNew && (
+                        <span className="absolute top-0 left-0 px-2 py-0.5 text-[9px] font-bold tracking-widest text-white uppercase bg-red-600 rounded-br-md">
+                            New
+                        </span>
                     )}
                 </div>
-                {!overlay && (
+                {overlay ? (
+                    <div className="flex items-baseline justify-between gap-2 mt-2">
+                        <span className="text-sm font-semibold leading-tight text-gray-900 truncate">{label}</span>
+                        {price != null && <span className="text-sm text-gray-700 shrink-0">${Math.round(Number(price))}</span>}
+                    </div>
+                ) : (
                     <div className="mt-2">
                         <div className="text-[11px] lg:text-xs font-medium leading-tight text-center text-gray-700 line-clamp-2 lg:line-clamp-none">{label}</div>
                         {price && <div className="text-[11px] lg:text-xs text-center text-gray-500 mt-0.5">${price}</div>}
                     </div>
                 )}
             </button>
-            {overlay && (
-                <div className="absolute inset-x-2 lg:inset-x-3 bottom-2 lg:bottom-3 flex flex-col items-center gap-1 px-2 py-2 rounded-md bg-gray-900/85 backdrop-blur-sm text-white opacity-0 translate-y-2 transition-all duration-300 group-hover:opacity-100 group-hover:translate-y-0 group-focus-within:opacity-100 group-focus-within:translate-y-0 pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto">
-                    <span className="text-xs font-medium leading-tight text-center line-clamp-1">{label}{price ? ` · $${Math.round(Number(price))}` : ""}</span>
-                    <button type="button" onClick={(e) => { e.stopPropagation(); onInfo(); }} className="text-[11px] text-white/80 underline underline-offset-2 hover:text-white">
+            {/*
+             * The chosen cloth names itself: veil, script name and "more info" sit over
+             * the swatch only while selected, which is also what a tap produces on touch,
+             * where hover never fires.
+             */}
+            {overlay && isSelected && (
+                <div className="absolute inset-x-0 top-0 aspect-[40/27] flex flex-col items-center justify-center gap-1 rounded-lg pointer-events-none bg-black/55 animate-fade-in">
+                    <span className="px-2 text-center text-white font-script text-[26px] leading-none">{label}</span>
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onInfo(); }}
+                        className="text-[11px] font-medium text-white/90 pointer-events-auto hover:text-white"
+                    >
                         more info
                     </button>
                 </div>
@@ -1369,6 +1388,8 @@ const SuitDesigner = () => {
     const [showLiningPanel, setShowLiningPanel] = useState(false);
     const [showLightbox, setShowLightbox] = useState(false);
     const [infoFabricId, setInfoFabricId] = useState(null);
+    // Below lg the options live in a slide-over drawer, so the suit gets the whole screen.
+    const [drawerOpen, setDrawerOpen] = useState(false);
     const [isWide, setIsWide] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches);
     useEffect(() => {
         const mq = window.matchMedia("(min-width: 1024px)");
@@ -1490,17 +1511,24 @@ const SuitDesigner = () => {
         panelScrollRef.current?.scrollTo({ top: 0 });
     }, [activeTab]);
 
-    /* Close the lightbox / lining panel on Escape. */
+    /* On a phone a tab opens the drawer; tapping the tab already open closes it again. */
+    const selectTab = (id) => {
+        setDrawerOpen((open) => (isWide ? false : !(open && id === activeTab)));
+        setActiveTab(id);
+    };
+
+    /* Close the lightbox / lining panel / drawer on Escape, outermost first. */
     useEffect(() => {
-        if (!showLiningPanel && !showLightbox) return undefined;
+        if (!showLiningPanel && !showLightbox && !drawerOpen) return undefined;
         const onKey = (e) => {
             if (e.key !== "Escape") return;
             if (showLightbox) setShowLightbox(false);
-            else setShowLiningPanel(false);
+            else if (showLiningPanel) setShowLiningPanel(false);
+            else setDrawerOpen(false);
         };
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
-    }, [showLiningPanel, showLightbox]);
+    }, [showLiningPanel, showLightbox, drawerOpen]);
 
     /* ---------- change handlers ---------- */
     const changeFabric = useCallback(
@@ -1704,11 +1732,11 @@ const SuitDesigner = () => {
 
     /* ---------- main render ---------- */
     return (
-        <div className="flex flex-col overflow-hidden bg-[#f7f6f3] h-dvh max-lg:landscape:flex-row lg:flex-row animate-fade-in">
+        <div className="flex flex-col overflow-hidden bg-[#f7f6f3] h-dvh lg:flex-row animate-fade-in">
             <Head title="Design your suit" />
 
             {/* STAGE SIDE — header, suit, and the summary column; on top below lg, on the right from lg */}
-            <main className="relative flex flex-col flex-1 order-1 min-w-0 min-h-0 max-lg:landscape:order-2 lg:order-2">
+            <main className="relative flex flex-col flex-1 order-1 min-w-0 min-h-0 lg:order-2">
             <header className="absolute inset-x-0 top-0 z-30 flex items-center justify-between h-12 px-4 pointer-events-none lg:h-16 lg:px-8 [&>*]:pointer-events-auto">
                 <Link href="/" className="flex items-center gap-3 text-gray-900" aria-label="Back to home">
                     <span className="text-[22px] font-semibold tracking-tight lg:text-[26px]">Custom Tailor</span>
@@ -1783,20 +1811,6 @@ const SuitDesigner = () => {
                     </div>
                 )}
 
-                <div className="absolute z-30 flex items-center gap-3 bottom-3 left-3 lg:hidden">
-                    <button
-                        type="button"
-                        onClick={handleAddToBag}
-                        disabled={Boolean(pending)}
-                        className="inline-flex items-center gap-2.5 pl-4 pr-5 py-3 text-sm font-medium text-white bg-gray-900 rounded-full shadow-lg transition-all duration-200 hover:bg-gray-700 active:scale-[0.98] disabled:opacity-50"
-                    >
-                        <ShoppingBag className="w-4 h-4" />
-                        Add to bag
-                        <span className="pl-2.5 ml-0.5 border-l border-white/20 tabular-nums">${Math.round(Number(selectedFabric?.price) || 0)}</span>
-                    </button>
-                    <span className="hidden text-xs text-gray-500 sm:block">{selectedFabric?.name}</span>
-                </div>
-
                 {bagNotice && (
                     <div role="status" className="absolute z-30 flex items-center gap-3 px-4 py-3 text-white bg-gray-900 rounded-2xl shadow-xl top-3 left-3 lg:top-4 lg:left-4 animate-slide-down">
                         <span className="flex items-center justify-center w-6 h-6 rounded-full bg-white/15">
@@ -1867,14 +1881,57 @@ const SuitDesigner = () => {
                     </button>
                 </div>
             </div>
+
+            {/*
+             * Purchase bar — the phone counterpart of the desktop summary column.
+             * It sits in the layout rather than floating, so it can never cover the
+             * suit no matter how tall the render is.
+             */}
+            <div className="flex items-center justify-between gap-4 px-4 pt-1 pb-3 shrink-0 lg:hidden">
+                <div className="min-w-0">
+                    <p className="text-[10px] font-semibold tracking-[0.2em] text-gray-400 uppercase">Your custom suit</p>
+                    <p className="flex items-baseline gap-2 mt-0.5">
+                        <span className="text-xl font-light tracking-tight text-gray-900 tabular-nums">${Math.round(Number(selectedFabric?.price) || 0)}</span>
+                        <span className="text-xs text-gray-500 truncate">{selectedFabric?.name}</span>
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    onClick={handleAddToBag}
+                    disabled={Boolean(pending)}
+                    className="inline-flex items-center gap-2 px-6 py-3 text-sm font-medium text-white bg-[#ff8a00] rounded-full shrink-0 shadow-[0_8px_20px_-8px_rgba(255,138,0,0.8)] transition-all duration-200 hover:bg-[#f07f00] active:scale-[0.98] disabled:opacity-60"
+                >
+                    <ShoppingBag className="w-4 h-4" />
+                    Add to cart
+                </button>
+            </div>
             </main>
 
-            {/* PANEL — bottom sheet below lg; rail + slide-out options from lg */}
+            {/* MOBILE — tapping the backdrop (the sliver of suit still showing) closes the drawer */}
+            {drawerOpen && (
+                <div
+                    className="fixed inset-0 z-40 bg-gray-900/30 lg:hidden animate-fade-in"
+                    onClick={() => setDrawerOpen(false)}
+                    aria-hidden="true"
+                />
+            )}
+
+            {/* MOBILE — the tabs stay on screen; each one slides the drawer open */}
+            <nav className="flex items-center bg-white border-t border-gray-100 shrink-0 order-3 pb-[env(safe-area-inset-bottom)] lg:hidden" aria-label="Sections">
+                <RailTab id="fabric" icon={Layers} label="Fabric" isActive={drawerOpen && activeTab === "fabric"} onSelect={selectTab} />
+                <RailTab id="style" icon={Scissors} label="Style" isActive={drawerOpen && activeTab === "style"} onSelect={selectTab} />
+                <RailTab id="accents" icon={Palette} label="Accents" isActive={drawerOpen && activeTab === "accents"} onSelect={selectTab} />
+            </nav>
+
+            {/* PANEL — slide-over drawer below lg; rail + options from lg */}
             <aside
-                className={`z-10 flex flex-col order-2 w-full shrink-0 h-[44dvh] md:h-[40dvh] max-lg:landscape:order-1 max-lg:landscape:h-full max-lg:landscape:w-[min(55vw,24rem)] max-lg:landscape:border-t-0 max-lg:landscape:border-r lg:order-1 lg:flex-row lg:h-full bg-white border-t border-gray-100 lg:border-t-0 lg:border-r shadow-[0_-6px_24px_rgba(0,0,0,0.06)] lg:shadow-lg ${
-                    activeTab === "fabric" ? "lg:w-[31rem] xl:w-[34rem]" : "lg:w-[26rem] xl:w-[29rem]"
+                className={`flex flex-col bg-white shrink-0 order-2 max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-50 max-lg:w-[86vw] max-lg:max-w-sm max-lg:shadow-2xl max-lg:transition-transform max-lg:duration-300 max-lg:ease-out ${
+                    drawerOpen ? "max-lg:translate-x-0" : "max-lg:-translate-x-full"
+                } lg:static lg:z-10 lg:order-1 lg:flex-row lg:h-full lg:translate-x-0 lg:border-r lg:border-gray-100 lg:shadow-lg ${
+                    activeTab === "fabric" ? "lg:w-[34rem] xl:w-[38rem]" : "lg:w-[26rem] xl:w-[29rem]"
                 }`}
                 aria-label="Customization options"
+                aria-hidden={!isWide && !drawerOpen}
             >
                 {/* content */}
                 <div className="relative flex flex-col flex-1 min-w-0 min-h-0">
@@ -1905,13 +1962,22 @@ const SuitDesigner = () => {
                             >
                                 <RotateCcw className="w-4 h-4" />
                             </button>
+                            <button
+                                type="button"
+                                onClick={() => setDrawerOpen(false)}
+                                title="Close"
+                                aria-label="Close options"
+                                className="p-2 text-gray-500 transition-all duration-200 rounded-lg lg:hidden hover:text-gray-900 hover:bg-gray-100 active:scale-95"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
                         </div>
                     </div>
 
                     <div ref={panelScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain thin-scrollbar">
                         {activeTab === "fabric" && (
                             <div key="fabric" className="p-4 lg:p-5 animate-slide-in-left">
-                                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-3 lg:gap-3">
+                                <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 lg:gap-x-4 lg:gap-y-7">
                                     {fabrics.map((fabric) => (
                                         <FabricOptionTile
                                             key={fabric.id}
@@ -2154,9 +2220,9 @@ const SuitDesigner = () => {
                     )}
                 </div>
 
-                {/* rail — bottom tab bar below lg, vertical rail from lg */}
+                {/* rail — vertical, desktop only; phones use the bottom tab bar */}
                 <nav
-                    className="flex items-center shrink-0 border-t border-gray-100 bg-gray-50 pb-[env(safe-area-inset-bottom)] lg:flex-col lg:w-20 lg:gap-4 lg:py-6 lg:border-t-0 lg:border-l"
+                    className="items-center hidden shrink-0 bg-gray-50 lg:flex lg:flex-col lg:w-20 lg:gap-4 lg:py-6 lg:border-l lg:border-gray-100"
                     aria-label="Sections"
                 >
                     <Link
