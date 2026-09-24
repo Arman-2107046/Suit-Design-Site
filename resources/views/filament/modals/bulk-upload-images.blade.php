@@ -45,9 +45,6 @@
         0%, 100% { opacity: 1; }
         50% { opacity: 0.5; }
     }
-    .bfu-progress-fill {
-        transition: width 0.3s ease;
-    }
 
     /* ── Completion overlay ──────────────────────────────────────────── */
 
@@ -253,6 +250,257 @@
         .bfu-halo, .bfu-spark, .bfu-card::after { display: none; }
         .bfu-check { stroke-dashoffset: 0; animation: none; }
     }
+    /* ── Progress stage ──────────────────────────────────────────────── */
+
+    .bfu-grid {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 16px;
+    }
+    .bfu-main {
+        flex: 1 1 360px;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .bfu-stage {
+        width: 100%;
+        padding: 20px 22px 18px;
+        background: linear-gradient(135deg, #fbfbff 0%, #f6f6fc 100%);
+        border: 1px solid #ececf4;
+        border-radius: 16px;
+        animation: bfu-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    .bfu-stage-top {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 12px;
+    }
+    .bfu-stage-label {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        color: #111827;
+    }
+    .bfu-stage-meta {
+        margin: 3px 0 0;
+        font-size: 11px;
+        color: #9ca3af;
+        font-variant-numeric: tabular-nums;
+    }
+    .bfu-pct {
+        flex-shrink: 0;
+        font-size: 34px;
+        font-weight: 600;
+        line-height: 0.9;
+        letter-spacing: -0.03em;
+        color: #4338ca;
+        font-variant-numeric: tabular-nums;
+    }
+    .bfu-pct i {
+        font-size: 16px;
+        font-style: normal;
+        font-weight: 500;
+        color: #a5b4fc;
+        margin-left: 1px;
+    }
+
+    .bfu-bar {
+        position: relative;
+        width: 100%;
+        height: 24px;
+        background: #ececf4;
+        border-radius: 999px;
+        overflow: hidden;
+        box-shadow: inset 0 1px 3px rgba(15, 15, 40, 0.09);
+    }
+    .bfu-bar-fill {
+        position: relative;
+        height: 100%;
+        border-radius: 999px;
+        overflow: hidden;
+        background: linear-gradient(90deg, #a5b4fc, #6366f1);
+        /* A highlight along the top edge keeps the thicker bar from reading as a flat slab */
+        box-shadow: 0 0 14px rgba(99, 102, 241, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+        transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    /* A highlight travels the filled section while bytes are actually moving */
+    .bfu-bar-live::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+        transform: translateX(-100%);
+        animation: bfu-bar-sheen 1.4s linear infinite;
+    }
+    @keyframes bfu-bar-sheen {
+        to { transform: translateX(100%); }
+    }
+    .bfu-eta {
+        margin: 10px 0 0;
+        font-size: 11px;
+        font-weight: 500;
+        color: #6366f1;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Rejected panel ──────────────────────────────────────────────── */
+
+    .bfu-rejects {
+        flex: 1 1 272px;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        background: #fff;
+        border: 1px solid #fadcdc;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 10px 30px -22px rgba(185, 28, 28, 0.55);
+        animation: bfu-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    .bfu-rejects-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 13px 16px;
+        background: linear-gradient(135deg, #fef4f4 0%, #fdeeee 100%);
+        border-bottom: 1px solid #fadcdc;
+    }
+    .bfu-rejects-title {
+        flex: 1;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #b91c1c;
+    }
+    .bfu-rejects-count {
+        font-size: 11px;
+        font-weight: 700;
+        color: #fff;
+        background: #dc2626;
+        border-radius: 999px;
+        padding: 2px 9px;
+    }
+    .bfu-rejects-clear {
+        padding: 3px 9px;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        color: #9a5757;
+        background: transparent;
+        border: 1px solid #f0cfcf;
+        border-radius: 999px;
+        cursor: pointer;
+        transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+    }
+    .bfu-rejects-clear:hover {
+        color: #b91c1c;
+        border-color: #dc2626;
+        background: #fff;
+    }
+    .bfu-rejects-list {
+        max-height: 268px;
+        overflow-y: auto;
+    }
+    .bfu-reject {
+        padding: 11px 16px;
+        border-bottom: 1px solid #f7eaea;
+        animation: bfu-fade-in 0.3s ease both;
+    }
+    .bfu-reject:last-child { border-bottom: 0; }
+    .bfu-reject-name {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 600;
+        color: #111827;
+        word-break: break-all;
+    }
+    .bfu-reject-reason {
+        margin: 3px 0 0;
+        font-size: 11px;
+        line-height: 1.45;
+        color: #6b7280;
+    }
+    .bfu-reject-stage {
+        display: inline-block;
+        margin-top: 6px;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #b91c1c;
+        background: #fee2e2;
+        border-radius: 5px;
+        padding: 2px 6px;
+    }
+    .bfu-reject-stage.filing {
+        color: #c2410c;
+        background: #ffedd5;
+    }
+    .bfu-pdf-row {
+        display: flex;
+        gap: 8px;
+        margin: 12px 16px 16px;
+    }
+    .bfu-pdf {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        padding: 10px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #b91c1c;
+        background: #fff;
+        border: 1px solid #f3c9c9;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+    }
+    .bfu-pdf:hover:not(:disabled) {
+        background: #fef4f4;
+        border-color: #e9a8a8;
+        transform: translateY(-1px);
+    }
+    .bfu-pdf:disabled { opacity: 0.6; cursor: wait; }
+
+    .bfu-overlay-reports {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+    }
+    .bfu-overlay-pdf {
+        flex: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        padding: 11px 14px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #4b5563;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: background 0.2s ease, border-color 0.2s ease;
+    }
+    .bfu-overlay-pdf:hover:not(:disabled) { background: #f9fafb; border-color: #d1d5db; }
+    .bfu-overlay-pdf:disabled { opacity: 0.6; cursor: wait; }
+
+    @media (prefers-reduced-motion: reduce) {
+        .bfu-stage, .bfu-rejects, .bfu-reject { animation: none; }
+        .bfu-bar-live::after { animation: none; opacity: 0; }
+    }
+
 </style>
 
 <div
@@ -260,12 +508,29 @@
         cloudName: @js($cloudName),
         uploadPreset: @js($uploadPreset),
         wireMethod: @js($wireMethod ?? 'processBulkUpload'),
+        reportUrl: @js(route('admin.bulk-upload.report')),
+
         files: [],
         dragging: false,
         uploading: false,
         finalizing: false,
         doneCount: 0,
         allDone: false,
+
+        /* Progress is measured in bytes, not file count: a 4 MB swatch and a
+           40 KB button image are not the same amount of work. */
+        totalBytes: 0,
+        loadedBytes: 0,
+        percent: 0,
+        etaText: '',
+        rate: 0,
+        lastLoaded: 0,
+        lastTime: 0,
+        etaTimer: null,
+
+        /* Whatever did not make it, and why */
+        rejected: [],
+        buildingReport: null,
 
         /* Completion overlay */
         showSuccess: false,
@@ -281,7 +546,15 @@
 
         handleFiles(fileList) {
             for (const file of fileList) {
-                this.files.push({ file: file, name: file.name, status: 'pending', url: null });
+                this.files.push({
+                    file: file,
+                    name: file.name,
+                    size: file.size || 0,
+                    loaded: 0,
+                    status: 'pending',
+                    url: null,
+                    reason: null,
+                });
             }
         },
 
@@ -291,75 +564,233 @@
                 return;
             }
 
+            const queue = this.files.filter(f => f.status !== 'done');
+
             this.uploading = true;
-            this.doneCount = 0;
             this.allDone = false;
             this.showSuccess = false;
             this.summary = null;
+            this.rejected = [];
+            this.doneCount = this.files.length - queue.length;
 
-            for (const f of this.files) {
-                if (f.status === 'done') {
-                    this.doneCount++;
-                    continue;
-                }
+            this.totalBytes = Math.max(1, queue.reduce((n, f) => n + f.size, 0));
+            this.loadedBytes = 0;
+            this.percent = 0;
+            this.rate = 0;
+            this.lastLoaded = 0;
+            this.lastTime = performance.now();
+            this.etaText = 'estimating time left';
+            this.etaTimer = setInterval(() => this.tickEta(), 450);
 
+            for (const f of queue) {
                 f.status = 'uploading';
+                f.loaded = 0;
+                f.reason = null;
 
                 try {
-                    const formData = new FormData();
-                    formData.append('file', f.file);
-                    formData.append('upload_preset', this.uploadPreset);
-
-                    const res = await fetch('https://api.cloudinary.com/v1_1/' + this.cloudName + '/image/upload', {
-                        method: 'POST',
-                        body: formData,
-                    });
-
-                    if (!res.ok) {
-                        const errorBody = await res.text();
-                        console.error('Cloudinary upload failed for', f.name, ':', errorBody);
-                        throw new Error('Upload failed: ' + errorBody);
-                    }
-
-                    const data = await res.json();
-                    f.url = data.secure_url;
+                    await this.sendToCloudinary(f);
                     f.status = 'done';
                 } catch (e) {
                     f.status = 'error';
+                    f.reason = e.message;
+                    this.rejected.push({ name: f.name, stage: 'Cloudinary upload', reason: e.message });
+
+                    /* A failed file still counts towards the bar, or it stalls short of the end */
+                    this.advance(f, f.size);
                 }
 
                 this.doneCount++;
             }
 
+            clearInterval(this.etaTimer);
+            this.etaText = '';
+            this.percent = 100;
+
             const payload = this.files
                 .filter(f => f.status === 'done')
                 .map(f => ({ name: f.name, url: f.url }));
 
-            this.okCount = payload.length;
-            this.failCount = this.files.length - payload.length;
             this.uploading = false;
 
             if (payload.length === 0) {
-                /* Nothing reached Cloudinary — the rows already say so, no celebration. */
+                /* Nothing reached Cloudinary, so the rejects panel is the whole story */
+                this.okCount = 0;
+                this.failCount = this.rejected.length;
                 return;
             }
 
             this.finalizing = true;
 
-            /* Pages that report what they filed return a summary; the rest return nothing. */
-            this.summary = (await this.$wire.call(this.wireMethod, payload)) ?? null;
+            try {
+                /* Pages that report what they filed return a summary; the rest return nothing */
+                this.summary = (await this.$wire.call(this.wireMethod, payload)) ?? null;
+            } catch (e) {
+                /* The upload itself succeeded, so say what broke rather than leaving a stuck spinner */
+                for (const f of this.files.filter(f => f.status === 'done')) {
+                    this.rejected.push({ name: f.name, stage: 'Filing', reason: 'The server did not answer: ' + e.message });
+                }
+            } finally {
+                this.finalizing = false;
+            }
 
-            this.finalizing = false;
+            this.absorbFilingRejects();
+
+            this.okCount = this.summary?.filed ?? payload.length;
+            this.failCount = this.rejected.length;
             this.allDone = true;
+
             this.celebrate();
+        },
+
+        sendToCloudinary(f) {
+            return new Promise((resolve, reject) => {
+                const form = new FormData();
+                form.append('file', f.file);
+                form.append('upload_preset', this.uploadPreset);
+
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', 'https://api.cloudinary.com/v1_1/' + this.cloudName + '/image/upload');
+
+                /* Byte-level progress is the whole reason this is XHR and not fetch */
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) this.advance(f, e.loaded);
+                });
+
+                xhr.addEventListener('load', () => {
+                    if (xhr.status - 200 >= 100 || xhr.status - 200 < 0) {
+                        console.error('Cloudinary upload failed for', f.name, xhr.responseText);
+                        reject(new Error(this.cloudinaryReason(xhr.responseText, xhr.status)));
+                        return;
+                    }
+
+                    this.advance(f, f.size);
+
+                    try {
+                        f.url = JSON.parse(xhr.responseText).secure_url;
+                    } catch (e) {
+                        reject(new Error('Cloudinary sent back a response we could not read'));
+                        return;
+                    }
+
+                    resolve();
+                });
+
+                xhr.addEventListener('error', () => reject(new Error('Network error while reaching Cloudinary')));
+                xhr.addEventListener('timeout', () => reject(new Error('Cloudinary took too long to respond')));
+
+                xhr.send(form);
+            });
+        },
+
+        advance(f, loaded) {
+            const capped = Math.min(loaded, f.size || loaded);
+            this.loadedBytes += Math.max(0, capped - f.loaded);
+            f.loaded = capped;
+            this.percent = Math.min(100, (this.loadedBytes / this.totalBytes) * 100);
+        },
+
+        /* Files that reached Cloudinary but the server would not file */
+        absorbFilingRejects() {
+            for (const row of this.summary?.rejected ?? []) {
+                this.rejected.push({ name: row.file, stage: 'Filing', reason: row.reason });
+
+                const match = this.files.find(f => f.name === row.file);
+                if (match) {
+                    match.status = 'rejected';
+                    match.reason = row.reason;
+                }
+            }
+        },
+
+        tickEta() {
+            const now = performance.now();
+            const deltaTime = now - this.lastTime;
+            const deltaBytes = this.loadedBytes - this.lastLoaded;
+
+            this.lastTime = now;
+            this.lastLoaded = this.loadedBytes;
+
+            if (deltaTime <= 0 || this.loadedBytes <= 0) return;
+
+            /* Smoothed, so one slow chunk does not throw the estimate around */
+            const instant = deltaBytes / deltaTime;
+            this.rate = this.rate ? this.rate * 0.75 + instant * 0.25 : instant;
+
+            if (this.rate <= 0) return;
+
+            this.etaText = this.formatDuration((this.totalBytes - this.loadedBytes) / this.rate);
+        },
+
+        formatDuration(ms) {
+            const seconds = Math.max(0, Math.round(ms / 1000));
+
+            if (seconds <= 2) return 'almost done';
+            if (seconds - 60 < 0) return 'about ' + seconds + 's left';
+
+            const minutes = Math.floor(seconds / 60);
+            const rest = seconds % 60;
+
+            return 'about ' + minutes + 'm ' + (rest ? rest + 's ' : '') + 'left';
+        },
+
+        formatBytes(n) {
+            if (!n) return '0 KB';
+            const mb = n / 1048576;
+            return mb - 1 >= 0 ? mb.toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+        },
+
+        cloudinaryReason(body, status) {
+            try {
+                const parsed = JSON.parse(body);
+                if (parsed && parsed.error && parsed.error.message) return parsed.error.message;
+            } catch (e) {
+                /* not JSON, so fall through to the status code */
+            }
+            return 'Cloudinary refused the file (HTTP ' + status + ')';
+        },
+
+        async downloadReport(format) {
+            this.buildingReport = format;
+
+            try {
+                const res = await fetch(this.reportUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content ?? '',
+                    },
+                    body: JSON.stringify({
+                        format: format,
+                        rejected: this.rejected,
+                        batch: { total: this.files.length, filed: this.okCount },
+                    }),
+                });
+
+                if (!res.ok) throw new Error('the server returned HTTP ' + res.status);
+
+                const url = URL.createObjectURL(await res.blob());
+                const link = document.createElement('a');
+
+                link.href = url;
+                link.download = 'bulk-upload-rejected-' + new Date().toISOString().slice(0, 10) + '.' + format;
+
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+
+                URL.revokeObjectURL(url);
+            } catch (e) {
+                alert('Could not build the report: ' + e.message);
+            } finally {
+                this.buildingReport = null;
+            }
         },
 
         celebrate() {
             this.displayCount = 0;
             this.showSuccess = true;
 
-            /* Prefer what the server actually filed; fall back to what Cloudinary accepted. */
-            const target = this.summary?.filed ?? this.okCount;
+            const target = this.okCount;
 
             if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
                 this.displayCount = target;
@@ -376,12 +807,14 @@
             requestAnimationFrame(tick);
         },
 
-        get breakdown() {
-            return Object.entries(this.summary?.breakdown ?? {});
+        get stageLabel() {
+            if (this.uploading) return 'Uploading to Cloudinary';
+            if (this.finalizing) return 'Filing images';
+            return 'Batch complete';
         },
 
-        get notFiled() {
-            return this.summary?.failed ?? 0;
+        get breakdown() {
+            return Object.entries(this.summary?.breakdown ?? {});
         },
     }"
     style="display: flex; flex-direction: column; gap: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;"
@@ -430,75 +863,156 @@
         >
     </div>
 
-    <div x-show="files.length > 0" style="display: flex; flex-direction: column; gap: 8px;">
-        <div x-show="uploading || allDone" style="width: 100%; height: 6px; background: #f0f0f5; border-radius: 999px; overflow: hidden;">
+    <div class="bfu-stage" x-show="uploading || finalizing || allDone" x-cloak style="display: none;">
+        <div class="bfu-stage-top">
+            <div style="min-width: 0;">
+                <p class="bfu-stage-label" x-text="stageLabel"></p>
+                <p class="bfu-stage-meta">
+                    <span x-text="doneCount"></span> of <span x-text="files.length"></span>
+                    <span x-text="files.length === 1 ? 'file' : 'files'"></span>
+                    <span x-show="totalBytes > 1">
+                        &middot;
+                        <span x-text="formatBytes(loadedBytes)"></span> of <span x-text="formatBytes(totalBytes)"></span>
+                    </span>
+                </p>
+            </div>
+
+            <div class="bfu-pct"><span x-text="Math.round(percent)"></span><i>%</i></div>
+        </div>
+
+        <div class="bfu-bar">
             <div
-                class="bfu-progress-fill"
-                x-bind:style="'height: 100%; border-radius: 999px; background: linear-gradient(90deg, #818cf8, #6366f1); width: ' + (files.length ? Math.round((doneCount / files.length) * 100) : 0) + '%;'"
+                class="bfu-bar-fill"
+                x-bind:class="(uploading || finalizing) ? 'bfu-bar-live' : ''"
+                x-bind:style="'width: ' + percent + '%;'"
             ></div>
         </div>
 
-        <div style="display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; padding-right: 2px;">
-            <template x-for="(f, index) in files" :key="index">
-                <div
-                    class="bfu-row"
-                    style="display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; background: white; border: 1px solid #ececf2; border-radius: 10px; padding: 10px 14px;"
-                >
-                    <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
-                            <rect x="3" y="3" width="18" height="18" rx="2"></rect>
-                            <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                            <polyline points="21 15 16 10 5 21"></polyline>
-                        </svg>
-                        <span x-text="f.name" style="color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
-                    </div>
-
-                    <span
-                        x-bind:class="f.status === 'uploading' ? 'bfu-pulse' : ''"
-                        x-text="f.status === 'pending' ? 'Pending' : f.status === 'uploading' ? 'Uploading' : f.status === 'done' ? 'Done' : 'Error'"
-                        x-bind:style="{
-                            pending: 'flex-shrink: 0; font-size: 11px; font-weight: 600; color: #9ca3af; background: #f3f4f6; padding: 3px 10px; border-radius: 999px;',
-                            uploading: 'flex-shrink: 0; font-size: 11px; font-weight: 600; color: #6366f1; background: #eef2ff; padding: 3px 10px; border-radius: 999px;',
-                            done: 'flex-shrink: 0; font-size: 11px; font-weight: 600; color: #15803d; background: #dcfce7; padding: 3px 10px; border-radius: 999px;',
-                            error: 'flex-shrink: 0; font-size: 11px; font-weight: 600; color: #dc2626; background: #fee2e2; padding: 3px 10px; border-radius: 999px;',
-                        }[f.status]"
-                    ></span>
-                </div>
-            </template>
-        </div>
+        <p class="bfu-eta" x-show="uploading && etaText" x-text="etaText"></p>
+        <p class="bfu-eta bfu-pulse" x-show="finalizing">Sorting them into the right tables…</p>
     </div>
 
-    <div style="display: flex; align-items: center; gap: 10px;">
-        <button
-            type="button"
-            class="bfu-btn-primary"
-            x-on:click="uploadAll()"
-            x-bind:disabled="uploading || finalizing || files.length === 0"
-            x-bind:style="(uploading || finalizing || files.length === 0)
-                ? 'background: #c7c8f5; color: white; border: none; border-radius: 10px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: not-allowed; box-shadow: none;'
-                : 'background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%); color: white; border: none; border-radius: 10px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer;'"
-        >
-            <span x-show="!uploading && !finalizing">Upload All</span>
-            <span x-show="uploading">Uploading… <span x-text="doneCount"></span>/<span x-text="files.length"></span></span>
-            <span x-show="finalizing" class="bfu-pulse">Filing images…</span>
-        </button>
+    <div class="bfu-grid">
+        <div class="bfu-main">
+            <div x-show="files.length > 0" style="display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; padding-right: 2px;">
+                <template x-for="(f, index) in files" :key="index">
+                    <div
+                        class="bfu-row"
+                        style="display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; background: white; border: 1px solid #ececf2; border-radius: 10px; padding: 10px 14px;"
+                    >
+                        <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
+                                <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                <polyline points="21 15 16 10 5 21"></polyline>
+                            </svg>
+                            <span x-text="f.name" style="color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+                        </div>
 
-        <button
-            type="button"
-            class="bfu-btn-ghost"
-            x-on:click="files = []; allDone = false"
-            x-bind:disabled="uploading || finalizing"
-            style="background: white; color: #374151; border: 1px solid #e0e0ea; border-radius: 10px; padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer;"
-        >
-            Clear
-        </button>
+                        <span
+                            x-bind:class="f.status === 'uploading' ? 'bfu-pulse' : ''"
+                            x-text="f.status === 'pending' ? 'Pending'
+                                : f.status === 'uploading' ? Math.round((f.loaded / (f.size || 1)) * 100) + '%'
+                                : f.status === 'done' ? 'Done'
+                                : f.status === 'rejected' ? 'Rejected'
+                                : 'Error'"
+                            x-bind:style="{
+                                pending: 'flex-shrink: 0; font-size: 11px; font-weight: 600; color: #9ca3af; background: #f3f4f6; padding: 3px 10px; border-radius: 999px;',
+                                uploading: 'flex-shrink: 0; font-size: 11px; font-weight: 600; color: #6366f1; background: #eef2ff; padding: 3px 10px; border-radius: 999px; font-variant-numeric: tabular-nums;',
+                                done: 'flex-shrink: 0; font-size: 11px; font-weight: 600; color: #15803d; background: #dcfce7; padding: 3px 10px; border-radius: 999px;',
+                                rejected: 'flex-shrink: 0; font-size: 11px; font-weight: 600; color: #c2410c; background: #ffedd5; padding: 3px 10px; border-radius: 999px;',
+                                error: 'flex-shrink: 0; font-size: 11px; font-weight: 600; color: #dc2626; background: #fee2e2; padding: 3px 10px; border-radius: 999px;',
+                            }[f.status]"
+                        ></span>
+                    </div>
+                </template>
+            </div>
 
-        <div x-show="allDone && !showSuccess" style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: #15803d;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"></polyline>
-            </svg>
-            <span>Done — you can close this now</span>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <button
+                    type="button"
+                    class="bfu-btn-primary"
+                    x-on:click="uploadAll()"
+                    x-bind:disabled="uploading || finalizing || files.length === 0"
+                    x-bind:style="(uploading || finalizing || files.length === 0)
+                        ? 'background: #c7c8f5; color: white; border: none; border-radius: 10px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: not-allowed; box-shadow: none;'
+                        : 'background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%); color: white; border: none; border-radius: 10px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer;'"
+                >
+                    <span x-show="!uploading && !finalizing">Upload All</span>
+                    <span x-show="uploading">Uploading… <span x-text="doneCount"></span>/<span x-text="files.length"></span></span>
+                    <span x-show="finalizing" class="bfu-pulse">Filing images…</span>
+                </button>
+
+                <button
+                    type="button"
+                    class="bfu-btn-ghost"
+                    x-on:click="files = []; allDone = false"
+                    x-bind:disabled="uploading || finalizing"
+                    style="background: white; color: #374151; border: 1px solid #e0e0ea; border-radius: 10px; padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer;"
+                >
+                    Clear
+                </button>
+
+                <div x-show="allDone && !showSuccess" style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: #15803d;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    <span>Done — you can close this now</span>
+                </div>
+            </div>
         </div>
+
+        {{-- Rejections stay on screen after the overlay is dismissed, so they can be read and reported on --}}
+        <aside class="bfu-rejects" x-show="rejected.length > 0" x-cloak style="display: none;">
+            <div class="bfu-rejects-head">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b91c1c" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="15" y1="9" x2="9" y2="15"></line>
+                    <line x1="9" y1="9" x2="15" y2="15"></line>
+                </svg>
+                <span class="bfu-rejects-title">Rejected</span>
+                <span class="bfu-rejects-count" x-text="rejected.length"></span>
+
+                <button
+                    type="button"
+                    class="bfu-rejects-clear"
+                    title="Clear this list"
+                    x-on:click="rejected = []"
+                >
+                    Clear
+                </button>
+            </div>
+
+            <div class="bfu-rejects-list">
+                <template x-for="(r, i) in rejected" :key="i">
+                    <div class="bfu-reject">
+                        <p class="bfu-reject-name" x-text="r.name"></p>
+                        <p class="bfu-reject-reason" x-text="r.reason"></p>
+                        <span class="bfu-reject-stage" x-bind:class="r.stage === 'Filing' ? 'filing' : ''" x-text="r.stage"></span>
+                    </div>
+                </template>
+            </div>
+
+            <div class="bfu-pdf-row">
+                <button type="button" class="bfu-pdf" x-on:click="downloadReport('pdf')" x-bind:disabled="buildingReport">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    <span x-text="buildingReport === 'pdf' ? 'Preparing…' : 'PDF'"></span>
+                </button>
+
+                <button type="button" class="bfu-pdf" x-on:click="downloadReport('csv')" x-bind:disabled="buildingReport">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    <span x-text="buildingReport === 'csv' ? 'Preparing…' : 'CSV'"></span>
+                </button>
+            </div>
+        </aside>
     </div>
 
     {{-- The finish line: a full-screen moment so a long upload ends on something worth watching --}}
@@ -549,17 +1063,42 @@
 
             <p class="bfu-warn bfu-rise" x-show="failCount > 0" style="animation-delay: 0.6s;">
                 <span x-text="failCount"></span>
-                <span x-text="failCount === 1 ? 'file' : 'files'"></span> never reached Cloudinary
-            </p>
-
-            <p class="bfu-warn bfu-rise" x-show="notFiled > 0" style="animation-delay: 0.62s;">
-                <span x-text="notFiled"></span>
-                <span x-text="notFiled === 1 ? 'file' : 'files'"></span> uploaded but could not be filed — see the notification
+                <span x-text="failCount === 1 ? 'file was' : 'files were'"></span> rejected
             </p>
 
             <button type="button" class="bfu-done bfu-rise" style="animation-delay: 0.66s;" x-on:click="showSuccess = false">
                 Done
             </button>
+
+            <div class="bfu-overlay-reports bfu-rise" style="animation-delay: 0.7s;" x-show="rejected.length > 0">
+                <button
+                    type="button"
+                    class="bfu-overlay-pdf"
+                    x-on:click="downloadReport('pdf')"
+                    x-bind:disabled="buildingReport"
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    <span x-text="buildingReport === 'pdf' ? 'Preparing…' : 'PDF report'"></span>
+                </button>
+
+                <button
+                    type="button"
+                    class="bfu-overlay-pdf"
+                    x-on:click="downloadReport('csv')"
+                    x-bind:disabled="buildingReport"
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    <span x-text="buildingReport === 'csv' ? 'Preparing…' : 'CSV'"></span>
+                </button>
+            </div>
         </div>
     </div>
 </div>

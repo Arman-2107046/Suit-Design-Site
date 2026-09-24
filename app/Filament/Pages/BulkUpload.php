@@ -52,7 +52,7 @@ class BulkUpload extends Page
 
 
     /**
-     * @return array{filed: int, failed: int, breakdown: array<string, int>}
+     * @return array{filed: int, failed: int, breakdown: array<string, int>, rejected: list<array{file: string, reason: string}>}
      */
     public function processUploads(array $files): array
     {
@@ -79,9 +79,11 @@ class BulkUpload extends Page
 
 
     /**
-     * Count what landed where, so the completion screen can say more than "done".
+     * Count what landed where, and carry the reasons for anything that did not,
+     * so the completion screen can say more than "done" and the PDF report has
+     * something to list.
      *
-     * @return array{filed: int, failed: int, breakdown: array<string, int>}
+     * @return array{filed: int, failed: int, breakdown: array<string, int>, rejected: list<array{file: string, reason: string}>}
      */
     private function summarise(array $result): array
     {
@@ -115,10 +117,20 @@ class BulkUpload extends Page
         arsort($breakdown);
 
 
+        $rejected = array_map(
+            fn (array $failure): array => [
+                'file' => $failure['file'],
+                'reason' => $failure['message'] ?? 'Unknown error',
+            ],
+            $result['failed'] ?? []
+        );
+
+
         return [
             'filed' => $filed,
-            'failed' => count($result['failed'] ?? []),
+            'failed' => count($rejected),
             'breakdown' => $breakdown,
+            'rejected' => array_values($rejected),
         ];
     }
 
