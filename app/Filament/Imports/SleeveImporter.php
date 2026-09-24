@@ -74,9 +74,8 @@ class SleeveImporter extends Importer
                 'diagram' => $this->data['diagram'],
                 'is_default' => (bool) $this->data['is_default'],
                 'status' => (bool) $this->data['status'],
-                'layer_index' => 160,
-
-                // layer_index is omitted because the database default (100) is used.
+                // Level with the lapel, matching SleevesUploader and every sleeve on record.
+                'layer_index' => 150,
             ]
         );
     }

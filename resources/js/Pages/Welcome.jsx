@@ -615,7 +615,7 @@ function layersFrom(sel) {
     if (sel.lapel) layers.push({ type: "lapel", image: sel.lapel.image, z: sel.lapel.layer_index || 150 });
     if (sel.sidePocket) layers.push({ type: "sidePocket", image: sel.sidePocket.image, z: sel.sidePocket.layer_index || 100 });
     if (sel.chestPocket) layers.push({ type: "chestPocket", image: sel.chestPocket.image, z: sel.chestPocket.layer_index || 100 });
-    if (sel.button) layers.push({ type: "button", image: sel.button.image, z: sel.button.layer_index || 160 });
+    if (sel.button) layers.push({ type: "button", image: sel.button.image, z: sel.button.layer_index || 120 });
 
     return layers
         .filter((l) => l.image)

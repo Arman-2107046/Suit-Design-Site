@@ -77,7 +77,7 @@ class BodyButtonImporter extends Importer
             ],
             [
                 'image' => $this->data['image'],
-                'layer_index' => 160,
+                'layer_index' => 120,
                 'is_default' => (bool) $this->data['is_default'],
                 'status' => (bool) $this->data['status'],
             ]

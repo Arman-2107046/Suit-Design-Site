@@ -228,7 +228,7 @@ class BodyButtonsUploader
             ],
             [
                 'image' => $url,
-                'layer_index' => 160,
+                'layer_index' => 120,
                 'is_default' => $isDefault,
                 'status' => true,
             ]
