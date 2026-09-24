@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\BulkUploadProcessController;
 use App\Http\Controllers\Admin\BulkUploadReportController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\JournalController;
@@ -53,7 +54,11 @@ Route::post('/journal/{post}/comments', [JournalController::class, 'comment'])->
 Route::post('/journal/{post}/like', [JournalController::class, 'like'])->middleware('throttle:60,1')->name('journal.like');
 
 Route::middleware('auth')->group(function () {
-    /* Bulk upload report: a route rather than a Livewire action, so every uploader modal can reach it. */
+    /* Bulk upload runs outside Livewire so a batch survives the admin navigating away mid-upload. */
+    Route::post('/admin/bulk-upload/process', BulkUploadProcessController::class)
+        ->middleware('throttle:60,1')
+        ->name('admin.bulk-upload.process');
+
     Route::post('/admin/bulk-upload/report', BulkUploadReportController::class)
         ->middleware('throttle:20,1')
         ->name('admin.bulk-upload.report');

@@ -503,250 +503,100 @@
 
 </style>
 
+{{--
+    This is a view over window.bulkUploadQueue, not an owner of the batch. The
+    queue, the progress and the rejections live there so they survive the admin
+    navigating to another menu mid-upload; this component subscribes, renders a
+    snapshot, and hands clicks back.
+--}}
 <div
     x-data="{
         cloudName: @js($cloudName),
         uploadPreset: @js($uploadPreset),
-        wireMethod: @js($wireMethod ?? 'processBulkUpload'),
+        wireMethod: @js($wireMethod ?? null),
+        processUrl: @js($processUrl ?? null),
         reportUrl: @js(route('admin.bulk-upload.report')),
 
-        files: [],
         dragging: false,
-        uploading: false,
-        finalizing: false,
-        doneCount: 0,
-        allDone: false,
-
-        /* Progress is measured in bytes, not file count: a 4 MB swatch and a
-           40 KB button image are not the same amount of work. */
-        totalBytes: 0,
-        loadedBytes: 0,
-        percent: 0,
-        etaText: '',
-        rate: 0,
-        lastLoaded: 0,
-        lastTime: 0,
-        etaTimer: null,
-
-        /* Whatever did not make it, and why */
-        rejected: [],
         buildingReport: null,
-
-        /* Completion overlay */
         showSuccess: false,
-        okCount: 0,
-        failCount: 0,
         displayCount: 0,
-        summary: null,
+        off: null,
+
+        s: window.bulkUploadQueue.snapshot(),
+
+        init() {
+            this.off = window.bulkUploadQueue.subscribe(() => {
+                this.s = window.bulkUploadQueue.snapshot();
+                this.maybeCelebrate();
+            });
+
+            /* The batch may well have finished while this page was closed */
+            this.maybeCelebrate();
+        },
+
+        destroy() {
+            if (this.off) this.off();
+        },
+
+        maybeCelebrate() {
+            if (this.s.stage !== 'done' || this.s.celebrated) return;
+
+            window.bulkUploadQueue.celebrated = true;
+            this.s = window.bulkUploadQueue.snapshot();
+            this.celebrate();
+        },
 
         handleDrop(e) {
             this.dragging = false;
-            this.handleFiles(e.dataTransfer.files);
+            window.bulkUploadQueue.add(e.dataTransfer.files);
         },
 
         handleFiles(fileList) {
-            for (const file of fileList) {
-                this.files.push({
-                    file: file,
-                    name: file.name,
-                    size: file.size || 0,
-                    loaded: 0,
-                    status: 'pending',
-                    url: null,
-                    reason: null,
-                });
-            }
+            window.bulkUploadQueue.add(fileList);
         },
 
-        async uploadAll() {
+        clearQueue() {
+            window.bulkUploadQueue.clearQueue();
+        },
+
+        clearRejects() {
+            window.bulkUploadQueue.clearRejects();
+        },
+
+        formatBytes(n) {
+            return window.bulkUploadQueue.formatBytes(n);
+        },
+
+        uploadAll() {
             if (!this.cloudName || !this.uploadPreset) {
                 alert('Cloudinary cloud name or upload preset is not configured.');
                 return;
             }
 
-            const queue = this.files.filter(f => f.status !== 'done');
-
-            this.uploading = true;
-            this.allDone = false;
-            this.showSuccess = false;
-            this.summary = null;
-            this.rejected = [];
-            this.doneCount = this.files.length - queue.length;
-
-            this.totalBytes = Math.max(1, queue.reduce((n, f) => n + f.size, 0));
-            this.loadedBytes = 0;
-            this.percent = 0;
-            this.rate = 0;
-            this.lastLoaded = 0;
-            this.lastTime = performance.now();
-            this.etaText = 'estimating time left';
-            this.etaTimer = setInterval(() => this.tickEta(), 450);
-
-            for (const f of queue) {
-                f.status = 'uploading';
-                f.loaded = 0;
-                f.reason = null;
-
-                try {
-                    await this.sendToCloudinary(f);
-                    f.status = 'done';
-                } catch (e) {
-                    f.status = 'error';
-                    f.reason = e.message;
-                    this.rejected.push({ name: f.name, stage: 'Cloudinary upload', reason: e.message });
-
-                    /* A failed file still counts towards the bar, or it stalls short of the end */
-                    this.advance(f, f.size);
-                }
-
-                this.doneCount++;
-            }
-
-            clearInterval(this.etaTimer);
-            this.etaText = '';
-            this.percent = 100;
-
-            const payload = this.files
-                .filter(f => f.status === 'done')
-                .map(f => ({ name: f.name, url: f.url }));
-
-            this.uploading = false;
-
-            if (payload.length === 0) {
-                /* Nothing reached Cloudinary, so the rejects panel is the whole story */
-                this.okCount = 0;
-                this.failCount = this.rejected.length;
-                return;
-            }
-
-            this.finalizing = true;
-
-            try {
-                /* Pages that report what they filed return a summary; the rest return nothing */
-                this.summary = (await this.$wire.call(this.wireMethod, payload)) ?? null;
-            } catch (e) {
-                /* The upload itself succeeded, so say what broke rather than leaving a stuck spinner */
-                for (const f of this.files.filter(f => f.status === 'done')) {
-                    this.rejected.push({ name: f.name, stage: 'Filing', reason: 'The server did not answer: ' + e.message });
-                }
-            } finally {
-                this.finalizing = false;
-            }
-
-            this.absorbFilingRejects();
-
-            this.okCount = this.summary?.filed ?? payload.length;
-            this.failCount = this.rejected.length;
-            this.allDone = true;
-
-            this.celebrate();
-        },
-
-        sendToCloudinary(f) {
-            return new Promise((resolve, reject) => {
-                const form = new FormData();
-                form.append('file', f.file);
-                form.append('upload_preset', this.uploadPreset);
-
-                const xhr = new XMLHttpRequest();
-                xhr.open('POST', 'https://api.cloudinary.com/v1_1/' + this.cloudName + '/image/upload');
-
-                /* Byte-level progress is the whole reason this is XHR and not fetch */
-                xhr.upload.addEventListener('progress', (e) => {
-                    if (e.lengthComputable) this.advance(f, e.loaded);
-                });
-
-                xhr.addEventListener('load', () => {
-                    if (xhr.status - 200 >= 100 || xhr.status - 200 < 0) {
-                        console.error('Cloudinary upload failed for', f.name, xhr.responseText);
-                        reject(new Error(this.cloudinaryReason(xhr.responseText, xhr.status)));
-                        return;
-                    }
-
-                    this.advance(f, f.size);
-
-                    try {
-                        f.url = JSON.parse(xhr.responseText).secure_url;
-                    } catch (e) {
-                        reject(new Error('Cloudinary sent back a response we could not read'));
-                        return;
-                    }
-
-                    resolve();
-                });
-
-                xhr.addEventListener('error', () => reject(new Error('Network error while reaching Cloudinary')));
-                xhr.addEventListener('timeout', () => reject(new Error('Cloudinary took too long to respond')));
-
-                xhr.send(form);
+            window.bulkUploadQueue.start({
+                cloudName: this.cloudName,
+                uploadPreset: this.uploadPreset,
+                finalize: (payload) => this.file(payload),
             });
         },
 
-        advance(f, loaded) {
-            const capped = Math.min(loaded, f.size || loaded);
-            this.loadedBytes += Math.max(0, capped - f.loaded);
-            f.loaded = capped;
-            this.percent = Math.min(100, (this.loadedBytes / this.totalBytes) * 100);
-        },
+        /* A route outlives this page; the resource modals have no route and stay on Livewire */
+        file(payload) {
+            if (!this.processUrl) return this.$wire.call(this.wireMethod, payload);
 
-        /* Files that reached Cloudinary but the server would not file */
-        absorbFilingRejects() {
-            for (const row of this.summary?.rejected ?? []) {
-                this.rejected.push({ name: row.file, stage: 'Filing', reason: row.reason });
-
-                const match = this.files.find(f => f.name === row.file);
-                if (match) {
-                    match.status = 'rejected';
-                    match.reason = row.reason;
-                }
-            }
-        },
-
-        tickEta() {
-            const now = performance.now();
-            const deltaTime = now - this.lastTime;
-            const deltaBytes = this.loadedBytes - this.lastLoaded;
-
-            this.lastTime = now;
-            this.lastLoaded = this.loadedBytes;
-
-            if (deltaTime <= 0 || this.loadedBytes <= 0) return;
-
-            /* Smoothed, so one slow chunk does not throw the estimate around */
-            const instant = deltaBytes / deltaTime;
-            this.rate = this.rate ? this.rate * 0.75 + instant * 0.25 : instant;
-
-            if (this.rate <= 0) return;
-
-            this.etaText = this.formatDuration((this.totalBytes - this.loadedBytes) / this.rate);
-        },
-
-        formatDuration(ms) {
-            const seconds = Math.max(0, Math.round(ms / 1000));
-
-            if (seconds <= 2) return 'almost done';
-            if (seconds - 60 < 0) return 'about ' + seconds + 's left';
-
-            const minutes = Math.floor(seconds / 60);
-            const rest = seconds % 60;
-
-            return 'about ' + minutes + 'm ' + (rest ? rest + 's ' : '') + 'left';
-        },
-
-        formatBytes(n) {
-            if (!n) return '0 KB';
-            const mb = n / 1048576;
-            return mb - 1 >= 0 ? mb.toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
-        },
-
-        cloudinaryReason(body, status) {
-            try {
-                const parsed = JSON.parse(body);
-                if (parsed && parsed.error && parsed.error.message) return parsed.error.message;
-            } catch (e) {
-                /* not JSON, so fall through to the status code */
-            }
-            return 'Cloudinary refused the file (HTTP ' + status + ')';
+            return fetch(this.processUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': window.bulkUploadQueue.csrf(),
+                },
+                body: JSON.stringify({ files: payload }),
+            }).then((res) => {
+                if (!res.ok) throw new Error('the server returned HTTP ' + res.status);
+                return res.json();
+            });
         },
 
         async downloadReport(format) {
@@ -757,12 +607,12 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content ?? '',
+                        'X-CSRF-TOKEN': window.bulkUploadQueue.csrf(),
                     },
                     body: JSON.stringify({
                         format: format,
-                        rejected: this.rejected,
-                        batch: { total: this.files.length, filed: this.okCount },
+                        rejected: this.s.rejected,
+                        batch: { total: this.s.files.length, filed: this.s.okCount },
                     }),
                 });
 
@@ -790,7 +640,7 @@
             this.displayCount = 0;
             this.showSuccess = true;
 
-            const target = this.okCount;
+            const target = this.s.okCount;
 
             if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
                 this.displayCount = target;
@@ -808,13 +658,13 @@
         },
 
         get stageLabel() {
-            if (this.uploading) return 'Uploading to Cloudinary';
-            if (this.finalizing) return 'Filing images';
+            if (this.s.stage === 'uploading') return 'Uploading to Cloudinary';
+            if (this.s.stage === 'filing') return 'Filing images';
             return 'Batch complete';
         },
 
         get breakdown() {
-            return Object.entries(this.summary?.breakdown ?? {});
+            return Object.entries(this.s.summary?.breakdown ?? {});
         },
     }"
     style="display: flex; flex-direction: column; gap: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;"
@@ -863,39 +713,40 @@
         >
     </div>
 
-    <div class="bfu-stage" x-show="uploading || finalizing || allDone" x-cloak style="display: none;">
+    <div class="bfu-stage" x-show="s.busy || s.stage === 'done'" x-cloak style="display: none;">
         <div class="bfu-stage-top">
             <div style="min-width: 0;">
                 <p class="bfu-stage-label" x-text="stageLabel"></p>
                 <p class="bfu-stage-meta">
-                    <span x-text="doneCount"></span> of <span x-text="files.length"></span>
-                    <span x-text="files.length === 1 ? 'file' : 'files'"></span>
-                    <span x-show="totalBytes > 1">
+                    <span x-text="s.doneCount"></span> of <span x-text="s.files.length"></span>
+                    <span x-text="s.files.length === 1 ? 'file' : 'files'"></span>
+                    <span x-show="s.totalBytes > 1">
                         &middot;
-                        <span x-text="formatBytes(loadedBytes)"></span> of <span x-text="formatBytes(totalBytes)"></span>
+                        <span x-text="formatBytes(s.loadedBytes)"></span> of <span x-text="formatBytes(s.totalBytes)"></span>
                     </span>
                 </p>
             </div>
 
-            <div class="bfu-pct"><span x-text="Math.round(percent)"></span><i>%</i></div>
+            <div class="bfu-pct"><span x-text="Math.round(s.percent)"></span><i>%</i></div>
         </div>
 
         <div class="bfu-bar">
             <div
                 class="bfu-bar-fill"
-                x-bind:class="(uploading || finalizing) ? 'bfu-bar-live' : ''"
-                x-bind:style="'width: ' + percent + '%;'"
+                x-bind:class="s.busy ? 'bfu-bar-live' : ''"
+                x-bind:style="'width: ' + s.percent + '%;'"
             ></div>
         </div>
 
-        <p class="bfu-eta" x-show="uploading && etaText" x-text="etaText"></p>
-        <p class="bfu-eta bfu-pulse" x-show="finalizing">Sorting them into the right tables…</p>
+        <p class="bfu-eta" x-show="s.stage === 'uploading' && s.etaText" x-text="s.etaText"></p>
+        <p class="bfu-eta bfu-pulse" x-show="s.stage === 'filing'">Sorting them into the right tables…</p>
+        <p class="bfu-eta" x-show="s.busy">You can keep working — leaving this page will not stop the upload.</p>
     </div>
 
     <div class="bfu-grid">
         <div class="bfu-main">
-            <div x-show="files.length > 0" style="display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; padding-right: 2px;">
-                <template x-for="(f, index) in files" :key="index">
+            <div x-show="s.files.length > 0" style="display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; padding-right: 2px;">
+                <template x-for="(f, index) in s.files" :key="index">
                     <div
                         class="bfu-row"
                         style="display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; background: white; border: 1px solid #ececf2; border-radius: 10px; padding: 10px 14px;"
@@ -933,27 +784,27 @@
                     type="button"
                     class="bfu-btn-primary"
                     x-on:click="uploadAll()"
-                    x-bind:disabled="uploading || finalizing || files.length === 0"
-                    x-bind:style="(uploading || finalizing || files.length === 0)
+                    x-bind:disabled="s.busy || s.files.length === 0"
+                    x-bind:style="(s.busy || s.files.length === 0)
                         ? 'background: #c7c8f5; color: white; border: none; border-radius: 10px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: not-allowed; box-shadow: none;'
                         : 'background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%); color: white; border: none; border-radius: 10px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer;'"
                 >
-                    <span x-show="!uploading && !finalizing">Upload All</span>
-                    <span x-show="uploading">Uploading… <span x-text="doneCount"></span>/<span x-text="files.length"></span></span>
-                    <span x-show="finalizing" class="bfu-pulse">Filing images…</span>
+                    <span x-show="!s.busy">Upload All</span>
+                    <span x-show="s.stage === 'uploading'">Uploading… <span x-text="s.doneCount"></span>/<span x-text="s.files.length"></span></span>
+                    <span x-show="s.stage === 'filing'" class="bfu-pulse">Filing images…</span>
                 </button>
 
                 <button
                     type="button"
                     class="bfu-btn-ghost"
-                    x-on:click="files = []; allDone = false"
-                    x-bind:disabled="uploading || finalizing"
+                    x-on:click="clearQueue()"
+                    x-bind:disabled="s.busy"
                     style="background: white; color: #374151; border: 1px solid #e0e0ea; border-radius: 10px; padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer;"
                 >
                     Clear
                 </button>
 
-                <div x-show="allDone && !showSuccess" style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: #15803d;">
+                <div x-show="s.stage === 'done' && !showSuccess" style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: #15803d;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="20 6 9 17 4 12"></polyline>
                     </svg>
@@ -963,7 +814,7 @@
         </div>
 
         {{-- Rejections stay on screen after the overlay is dismissed, so they can be read and reported on --}}
-        <aside class="bfu-rejects" x-show="rejected.length > 0" x-cloak style="display: none;">
+        <aside class="bfu-rejects" x-show="s.rejected.length > 0" x-cloak style="display: none;">
             <div class="bfu-rejects-head">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b91c1c" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
                     <circle cx="12" cy="12" r="10"></circle>
@@ -971,20 +822,20 @@
                     <line x1="9" y1="9" x2="15" y2="15"></line>
                 </svg>
                 <span class="bfu-rejects-title">Rejected</span>
-                <span class="bfu-rejects-count" x-text="rejected.length"></span>
+                <span class="bfu-rejects-count" x-text="s.rejected.length"></span>
 
                 <button
                     type="button"
                     class="bfu-rejects-clear"
                     title="Clear this list"
-                    x-on:click="rejected = []"
+                    x-on:click="clearRejects()"
                 >
                     Clear
                 </button>
             </div>
 
             <div class="bfu-rejects-list">
-                <template x-for="(r, i) in rejected" :key="i">
+                <template x-for="(r, i) in s.rejected" :key="i">
                     <div class="bfu-reject">
                         <p class="bfu-reject-name" x-text="r.name"></p>
                         <p class="bfu-reject-reason" x-text="r.reason"></p>
@@ -1051,7 +902,7 @@
 
             <p class="bfu-sub bfu-rise" style="animation-delay: 0.48s;">
                 <span x-text="displayCount"></span>
-                <span x-text="(summary?.filed ?? okCount) === 1 ? 'image' : 'images'"></span>
+                <span x-text="s.okCount === 1 ? 'image' : 'images'"></span>
                 uploaded and filed
             </p>
 
@@ -1061,16 +912,16 @@
                 </template>
             </div>
 
-            <p class="bfu-warn bfu-rise" x-show="failCount > 0" style="animation-delay: 0.6s;">
-                <span x-text="failCount"></span>
-                <span x-text="failCount === 1 ? 'file was' : 'files were'"></span> rejected
+            <p class="bfu-warn bfu-rise" x-show="s.failCount > 0" style="animation-delay: 0.6s;">
+                <span x-text="s.failCount"></span>
+                <span x-text="s.failCount === 1 ? 'file was' : 'files were'"></span> rejected
             </p>
 
             <button type="button" class="bfu-done bfu-rise" style="animation-delay: 0.66s;" x-on:click="showSuccess = false">
                 Done
             </button>
 
-            <div class="bfu-overlay-reports bfu-rise" style="animation-delay: 0.7s;" x-show="rejected.length > 0">
+            <div class="bfu-overlay-reports bfu-rise" style="animation-delay: 0.7s;" x-show="s.rejected.length > 0">
                 <button
                     type="button"
                     class="bfu-overlay-pdf"

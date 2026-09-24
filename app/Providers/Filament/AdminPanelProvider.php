@@ -30,11 +30,15 @@ class AdminPanelProvider extends PanelProvider
             ->path('admin')
             ->login()
             ->darkMode(false)
+            /* Navigating swaps the body instead of unloading the document, so a bulk
+               upload in flight survives the admin moving to another menu. */
+            ->spa()
             ->colors([
                 'primary' => Color::Blue,
             ])
             ->navigationGroups(['Sales', 'Fabrics', 'Jacket', 'Lapels', 'Pockets', 'Linings', 'Journal', 'Content', 'Support'])
             ->renderHook(PanelsRenderHook::STYLES_AFTER, fn (): string => view('filament.partials.bulk-upload-nav')->render())
+            ->renderHook(PanelsRenderHook::BODY_END, fn (): string => view('filament.partials.bulk-upload-dock')->render())
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([

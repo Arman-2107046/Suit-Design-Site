@@ -30,7 +30,7 @@
 
         'filenameHint' => 'BD__SB1_Black.png',
 
-        'wireMethod' => 'processUploads',
+        'processUrl' => route('admin.bulk-upload.process'),
 
         'accept' => 'image/*',
 
