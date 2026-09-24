@@ -48,6 +48,211 @@
     .bfu-progress-fill {
         transition: width 0.3s ease;
     }
+
+    /* ── Completion overlay ──────────────────────────────────────────── */
+
+    .bfu-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(12, 12, 20, 0.55);
+        backdrop-filter: blur(10px) saturate(130%);
+        -webkit-backdrop-filter: blur(10px) saturate(130%);
+        animation: bfu-veil 0.4s ease both;
+    }
+    @keyframes bfu-veil {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    .bfu-card {
+        position: relative;
+        overflow: hidden;
+        width: min(420px, 100%);
+        padding: 46px 40px 32px;
+        text-align: center;
+        background: #fff;
+        border-radius: 28px;
+        box-shadow: 0 40px 90px -28px rgba(10, 10, 30, 0.55), 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+        animation: bfu-card-in 0.75s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    @keyframes bfu-card-in {
+        from { opacity: 0; transform: translateY(26px) scale(0.94); }
+        to { opacity: 1; transform: none; }
+    }
+
+    /* One slow pass of light across the card, like a polished surface turning */
+    .bfu-card::after {
+        content: "";
+        position: absolute;
+        inset: -40%;
+        pointer-events: none;
+        background: linear-gradient(115deg, transparent 38%, rgba(99, 102, 241, 0.16) 50%, transparent 62%);
+        transform: translateX(-100%);
+        animation: bfu-sheen 1.6s 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+    }
+    @keyframes bfu-sheen {
+        to { transform: translateX(100%); }
+    }
+
+    .bfu-mark {
+        position: relative;
+        width: 96px;
+        height: 96px;
+        margin: 0 auto 22px;
+    }
+    .bfu-mark-disc {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
+        box-shadow: 0 20px 40px -14px rgba(99, 102, 241, 0.8);
+        animation: bfu-disc-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    @keyframes bfu-disc-in {
+        0% { opacity: 0; transform: scale(0.3); }
+        55% { opacity: 1; transform: scale(1.07); }
+        100% { opacity: 1; transform: scale(1); }
+    }
+    .bfu-halo {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 1.5px solid rgba(99, 102, 241, 0.5);
+        animation: bfu-halo 2.6s 0.35s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+    }
+    .bfu-halo + .bfu-halo {
+        animation-delay: 1.15s;
+    }
+    @keyframes bfu-halo {
+        0% { opacity: 0.8; transform: scale(0.72); }
+        70% { opacity: 0; }
+        100% { opacity: 0; transform: scale(1.75); }
+    }
+    .bfu-spark {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 5px;
+        height: 5px;
+        margin: -2.5px 0 0 -2.5px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #a5b4fc, #6366f1);
+        animation: bfu-spark 0.95s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    @keyframes bfu-spark {
+        0% { opacity: 0; transform: rotate(var(--a)) translateY(-34px) scale(0); }
+        35% { opacity: 1; transform: rotate(var(--a)) translateY(-52px) scale(1); }
+        100% { opacity: 0; transform: rotate(var(--a)) translateY(-78px) scale(0.2); }
+    }
+    .bfu-check {
+        stroke-dasharray: 26;
+        stroke-dashoffset: 26;
+        animation: bfu-check 0.55s 0.42s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+    }
+    @keyframes bfu-check {
+        to { stroke-dashoffset: 0; }
+    }
+
+    .bfu-rise {
+        animation: bfu-rise 0.75s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    @keyframes bfu-rise {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: none; }
+    }
+
+    .bfu-eyebrow {
+        margin: 0;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #6366f1;
+    }
+    .bfu-title {
+        margin: 8px 0 0;
+        font-size: 30px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+        color: #0f172a;
+    }
+    .bfu-sub {
+        margin: 8px 0 0;
+        font-size: 14px;
+        color: #6b7280;
+    }
+    .bfu-warn {
+        margin: 12px 0 0;
+        font-size: 13px;
+        font-weight: 500;
+        color: #b45309;
+    }
+    .bfu-chips {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 6px;
+        margin-top: 18px;
+    }
+    .bfu-chip {
+        font-size: 11px;
+        font-weight: 500;
+        color: #4338ca;
+        background: #eef2ff;
+        border-radius: 999px;
+        padding: 5px 11px;
+    }
+    .bfu-chip b {
+        font-weight: 700;
+    }
+    .bfu-done {
+        margin-top: 26px;
+        width: 100%;
+        background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
+        color: #fff;
+        border: none;
+        border-radius: 12px;
+        padding: 12px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: 0 10px 24px -10px rgba(99, 102, 241, 0.9);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .bfu-done:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 14px 30px -10px rgba(99, 102, 241, 1);
+    }
+    .bfu-done:active {
+        transform: translateY(0);
+    }
+
+    .dark .bfu-card {
+        background: #18181b;
+        box-shadow: 0 40px 90px -28px rgba(0, 0, 0, 0.8);
+    }
+    .dark .bfu-title { color: #fafafa; }
+    .dark .bfu-sub { color: #a1a1aa; }
+    .dark .bfu-chip { color: #c7d2fe; background: rgba(99, 102, 241, 0.16); }
+
+    @media (prefers-reduced-motion: reduce) {
+        .bfu-overlay, .bfu-card, .bfu-mark-disc, .bfu-rise {
+            animation: none !important;
+            opacity: 1 !important;
+            transform: none !important;
+        }
+        .bfu-halo, .bfu-spark, .bfu-card::after { display: none; }
+        .bfu-check { stroke-dashoffset: 0; animation: none; }
+    }
 </style>
 
 <div
@@ -58,8 +263,16 @@
         files: [],
         dragging: false,
         uploading: false,
+        finalizing: false,
         doneCount: 0,
         allDone: false,
+
+        /* Completion overlay */
+        showSuccess: false,
+        okCount: 0,
+        failCount: 0,
+        displayCount: 0,
+        summary: null,
 
         handleDrop(e) {
             this.dragging = false;
@@ -81,6 +294,8 @@
             this.uploading = true;
             this.doneCount = 0;
             this.allDone = false;
+            this.showSuccess = false;
+            this.summary = null;
 
             for (const f of this.files) {
                 if (f.status === 'done') {
@@ -120,12 +335,53 @@
                 .filter(f => f.status === 'done')
                 .map(f => ({ name: f.name, url: f.url }));
 
+            this.okCount = payload.length;
+            this.failCount = this.files.length - payload.length;
             this.uploading = false;
 
-            if (payload.length > 0) {
-                await this.$wire.call(this.wireMethod, payload);
-                this.allDone = true;
+            if (payload.length === 0) {
+                /* Nothing reached Cloudinary — the rows already say so, no celebration. */
+                return;
             }
+
+            this.finalizing = true;
+
+            /* Pages that report what they filed return a summary; the rest return nothing. */
+            this.summary = (await this.$wire.call(this.wireMethod, payload)) ?? null;
+
+            this.finalizing = false;
+            this.allDone = true;
+            this.celebrate();
+        },
+
+        celebrate() {
+            this.displayCount = 0;
+            this.showSuccess = true;
+
+            /* Prefer what the server actually filed; fall back to what Cloudinary accepted. */
+            const target = this.summary?.filed ?? this.okCount;
+
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                this.displayCount = target;
+                return;
+            }
+
+            /* Count up alongside the card, easing out so it settles rather than stops */
+            const start = performance.now() + 260;
+            const tick = (now) => {
+                const progress = Math.min(1, Math.max(0, now - start) / 800);
+                this.displayCount = Math.round(target * (1 - Math.pow(1 - progress, 3)));
+                if (progress < 1) requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+        },
+
+        get breakdown() {
+            return Object.entries(this.summary?.breakdown ?? {});
+        },
+
+        get notFiled() {
+            return this.summary?.failed ?? 0;
         },
     }"
     style="display: flex; flex-direction: column; gap: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;"
@@ -217,30 +473,93 @@
             type="button"
             class="bfu-btn-primary"
             x-on:click="uploadAll()"
-            x-bind:disabled="uploading || files.length === 0"
-            x-bind:style="(uploading || files.length === 0)
+            x-bind:disabled="uploading || finalizing || files.length === 0"
+            x-bind:style="(uploading || finalizing || files.length === 0)
                 ? 'background: #c7c8f5; color: white; border: none; border-radius: 10px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: not-allowed; box-shadow: none;'
                 : 'background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%); color: white; border: none; border-radius: 10px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer;'"
         >
-            <span x-show="!uploading">Upload All</span>
+            <span x-show="!uploading && !finalizing">Upload All</span>
             <span x-show="uploading">Uploading… <span x-text="doneCount"></span>/<span x-text="files.length"></span></span>
+            <span x-show="finalizing" class="bfu-pulse">Filing images…</span>
         </button>
 
         <button
             type="button"
             class="bfu-btn-ghost"
-            x-on:click="files = []"
-            x-bind:disabled="uploading"
+            x-on:click="files = []; allDone = false"
+            x-bind:disabled="uploading || finalizing"
             style="background: white; color: #374151; border: 1px solid #e0e0ea; border-radius: 10px; padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer;"
         >
             Clear
         </button>
 
-        <div x-show="allDone" style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: #15803d;">
+        <div x-show="allDone && !showSuccess" style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: #15803d;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="20 6 9 17 4 12"></polyline>
             </svg>
             <span>Done — you can close this now</span>
+        </div>
+    </div>
+
+    {{-- The finish line: a full-screen moment so a long upload ends on something worth watching --}}
+    <div
+        x-show="showSuccess"
+        x-cloak
+        class="bfu-overlay"
+        role="status"
+        aria-live="polite"
+        x-on:click.self="showSuccess = false"
+        x-on:keydown.escape.window="showSuccess = false"
+        style="display: none;"
+    >
+        <div class="bfu-card">
+            <div class="bfu-mark">
+                <span class="bfu-halo"></span>
+                <span class="bfu-halo"></span>
+
+                <template x-for="i in 10" :key="i">
+                    <span
+                        class="bfu-spark"
+                        x-bind:style="'--a: ' + (i * 36) + 'deg; animation-delay: ' + (0.3 + i * 0.012).toFixed(3) + 's;'"
+                    ></span>
+                </template>
+
+                <span class="bfu-mark-disc">
+                    <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                        <path class="bfu-check" d="M20 6 9 17l-5-5"></path>
+                    </svg>
+                </span>
+            </div>
+
+            <p class="bfu-eyebrow bfu-rise" style="animation-delay: 0.34s;">Bulk upload</p>
+
+            <h2 class="bfu-title bfu-rise" style="animation-delay: 0.4s;">Completed</h2>
+
+            <p class="bfu-sub bfu-rise" style="animation-delay: 0.48s;">
+                <span x-text="displayCount"></span>
+                <span x-text="(summary?.filed ?? okCount) === 1 ? 'image' : 'images'"></span>
+                uploaded and filed
+            </p>
+
+            <div class="bfu-chips bfu-rise" x-show="breakdown.length" style="animation-delay: 0.56s;">
+                <template x-for="[label, count] in breakdown" :key="label">
+                    <span class="bfu-chip"><b x-text="count"></b> <span x-text="label"></span></span>
+                </template>
+            </div>
+
+            <p class="bfu-warn bfu-rise" x-show="failCount > 0" style="animation-delay: 0.6s;">
+                <span x-text="failCount"></span>
+                <span x-text="failCount === 1 ? 'file' : 'files'"></span> never reached Cloudinary
+            </p>
+
+            <p class="bfu-warn bfu-rise" x-show="notFiled > 0" style="animation-delay: 0.62s;">
+                <span x-text="notFiled"></span>
+                <span x-text="notFiled === 1 ? 'file' : 'files'"></span> uploaded but could not be filed — see the notification
+            </p>
+
+            <button type="button" class="bfu-done bfu-rise" style="animation-delay: 0.66s;" x-on:click="showSuccess = false">
+                Done
+            </button>
         </div>
     </div>
 </div>
