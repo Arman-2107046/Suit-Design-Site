@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BustsConfiguratorCache;
+use App\Models\Concerns\OrderedByType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Body extends Model
 {
     use BustsConfiguratorCache;
+    use OrderedByType;
 
     protected $fillable = [
         'fabric_id',
@@ -38,12 +40,17 @@ class Body extends Model
 
     public function lapels(): HasMany
     {
-        return $this->hasMany(Lapel::class)->orderBy('sort_order');
+        return $this->orderedByType($this->hasMany(Lapel::class), [
+            LapelCategory::class => 'lapel_category_id',
+            LapelSubCategory::class => 'lapel_subcategory_id',
+        ]);
     }
 
     public function bodyButtons(): HasMany
     {
-        return $this->hasMany(BodyButton::class)->orderBy('sort_order');
+        return $this->orderedByType($this->hasMany(BodyButton::class), [
+            ButtonImage::class => 'button_image_id',
+        ]);
     }
 
 }

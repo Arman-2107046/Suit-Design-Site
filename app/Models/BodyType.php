@@ -3,12 +3,14 @@
 namespace App\Models;
 
 use App\Models\Concerns\BustsConfiguratorCache;
+use App\Models\Concerns\OrderedByType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class BodyType extends Model
 {
     use BustsConfiguratorCache;
+    use OrderedByType;
 
     protected $fillable = [
         'name',
@@ -22,11 +24,15 @@ class BodyType extends Model
     }
     public function bodyButtons(): HasMany
     {
-        return $this->hasMany(BodyButton::class)->orderBy('sort_order');
+        return $this->orderedByType($this->hasMany(BodyButton::class), [
+            ButtonImage::class => 'button_image_id',
+        ]);
     }
 
     public function defaultLinings(): HasMany
     {
-        return $this->hasMany(DefaultLining::class)->orderBy('sort_order');
+        return $this->orderedByType($this->hasMany(DefaultLining::class), [
+            LiningType::class => 'lining_type_id',
+        ]);
     }
 }

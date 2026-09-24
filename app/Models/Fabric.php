@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Fabric extends Model
 {
     use BustsConfiguratorCache;
+    use Concerns\OrderedByType;
 
     protected $fillable = [
         'sort_order',
@@ -56,42 +57,60 @@ class Fabric extends Model
 
     public function sleeves()
     {
-        return $this->hasMany(Sleeve::class)->orderBy('sort_order');
+        return $this->orderedByType($this->hasMany(Sleeve::class), [
+            SleeveType::class => 'sleeve_type_id',
+        ]);
     }
 
     public function sidePockets()
     {
-        return $this->hasMany(SidePocket::class)->orderBy('sort_order');
+        return $this->orderedByType($this->hasMany(SidePocket::class), [
+            SidepocketType::class => 'side_pocket_type_id',
+        ]);
     }
 
     public function chestPockets()
     {
-        return $this->hasMany(ChestPocket::class)->orderBy('sort_order');
+        return $this->orderedByType($this->hasMany(ChestPocket::class), [
+            ChestPocketType::class => 'chest_pocket_type_id',
+        ]);
     }
 
     public function body()
     {
-        return $this->hasMany(Body::class)->orderBy('sort_order');
+        return $this->orderedByType($this->hasMany(Body::class), [
+            BodyType::class => 'body_type_id',
+        ]);
     }
 
     public function lapels()
     {
-        return $this->hasMany(Lapel::class)->orderBy('sort_order');
+        return $this->orderedByType($this->hasMany(Lapel::class), [
+            LapelCategory::class => 'lapel_category_id',
+            LapelSubCategory::class => 'lapel_subcategory_id',
+        ]);
     }
 
 
     public function bodyButtons()
     {
-        return $this->hasMany(BodyButton::class)->orderBy('sort_order');
+        return $this->orderedByType($this->hasMany(BodyButton::class), [
+            ButtonImage::class => 'button_image_id',
+        ]);
     }
 
     public function customLinings()
     {
-        return $this->hasMany(CustomLining::class)->orderBy('sort_order');
+        return $this->orderedByType($this->hasMany(CustomLining::class), [
+            LiningType::class => 'lining_type_id',
+            CustomLiningFabric::class => 'custom_lining_fabric_id',
+        ]);
     }
 
     public function defaultLinings(): HasMany
     {
-        return $this->hasMany(DefaultLining::class)->orderBy('sort_order');
+        return $this->orderedByType($this->hasMany(DefaultLining::class), [
+            LiningType::class => 'lining_type_id',
+        ]);
     }
 }
