@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\CustomLining;
+use App\Models\DesignerSetting;
 use App\Models\Fabric;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -159,6 +160,9 @@ class SuitConfiguratorController extends Controller
 
         return [
             'success' => true,
+
+            /* How the admin wants the option lists laid out. */
+            'layout' => DesignerSetting::current()->toLayoutArray(),
 
             'data' => $fabrics->map(function ($fabric) use ($customLinings) {
 

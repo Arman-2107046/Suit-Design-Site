@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, memo } from "react";
 import { Head, Link } from "@inertiajs/react";
 import { addToCart, cartCount, summarizeDesign, useCart } from "@/lib/store";
-import { Loader2, Layers, Scissors, Palette, Menu, X, RotateCcw, Maximize2, ArrowLeft, ArrowRight, ShoppingBag, Check, Info, Images, Share2, Heart, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Loader2, Layers, Scissors, Palette, Menu, X, RotateCcw, Maximize2, ArrowLeft, ArrowRight, ShoppingBag, Check, Info, Images, Share2, Heart, ChevronLeft, ChevronRight, ChevronDown, Plus } from "lucide-react";
 
 const STORAGE_KEY = "custom-tailor.design.v1";
 const CANVAS_TIMEOUT_MS = 8000;
@@ -1095,22 +1095,179 @@ const ButtonOptionTile = memo(function ButtonOptionTile({ isSelected, onClick, o
     );
 });
 
+/* Layout the admin can change (Designer layout in the panel). These are what it shipped with. */
+const DEFAULT_LAYOUT = { fabric_columns: 3, style_layout: "grid", style_columns: 3, lining_columns: 2 };
+
+/* Tailwind only ships classes it can see, so the admin's column count maps to a written-out one. */
+const LG_COLS = { 2: "lg:grid-cols-2", 3: "lg:grid-cols-3", 4: "lg:grid-cols-4", 5: "lg:grid-cols-5" };
+const lgCols = (n, fallback = 3) => LG_COLS[n] || LG_COLS[fallback];
+
 const SectionHeader = ({ title }) => (
     <div className="px-4 pt-4 pb-2 lg:px-5 lg:pt-6 lg:pb-3">
         <span className="text-[11px] lg:text-xs font-bold tracking-wider text-gray-400 uppercase">{title}</span>
     </div>
 );
 
-/* Strip on small screens, grid on lg+. */
-const OptionRow = ({ children, cols = 3, className = "" }) => (
+/* Strip on small screens, grid on lg+ — unless the admin asked for a slider, which stays a strip. */
+const OptionRow = ({ children, cols = 3, slider = false, className = "" }) => (
     <div
-        className={`flex gap-2 px-4 pb-2 overflow-x-auto overscroll-x-contain snap-x snap-proximity no-scrollbar after:block after:shrink-0 after:w-2 lg:after:hidden lg:grid lg:gap-3 lg:px-5 lg:pb-0 lg:overflow-visible ${
-            cols === 2 ? "lg:grid-cols-2" : "lg:grid-cols-3"
+        className={`flex gap-2 px-4 pb-2 overflow-x-auto overscroll-x-contain snap-x snap-proximity no-scrollbar after:block after:shrink-0 after:w-2 lg:px-5 ${
+            slider ? "" : `lg:after:hidden lg:grid lg:gap-3 lg:pb-0 lg:overflow-visible ${lgCols(cols)}`
         } ${className}`}
     >
         {children}
     </div>
 );
+
+/* The diagram standing in for an option wherever it is shown beside its name. */
+const OptionThumb = ({ image, label, size = "w-11 h-11" }) => (
+    <div className={`${size} shrink-0 flex items-center justify-center overflow-hidden rounded-lg bg-gray-50`}>
+        <LazyImage
+            src={thumbUrl(image)}
+            alt={label || ""}
+            className="object-contain w-full h-full p-0.5"
+            style={{ mixBlendMode: "multiply" }}
+            fallback={<div className="w-full h-full bg-gray-50" />}
+        />
+    </div>
+);
+
+/* A style option as one row, for the list layout. */
+const StyleOptionListItem = memo(function StyleOptionListItem({ isSelected, onClick, onHover, image, label, isLoading }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            {...hoverHandlers(onHover)}
+            aria-pressed={isSelected}
+            className={`relative flex items-center w-full gap-3 px-3 py-2 text-left transition-all duration-200 border rounded-lg ${
+                isSelected ? "border-gray-900 bg-gray-50" : "border-gray-200 hover:border-gray-400 active:scale-[0.99]"
+            }`}
+        >
+            {isLoading && <TileSpinner />}
+            <OptionThumb image={image} label={label} size="w-12 h-12" />
+            <span className="flex-1 text-xs font-medium leading-tight text-gray-700 lg:text-sm">{label}</span>
+            {isSelected && <Check className="w-4 h-4 text-gray-900 shrink-0" />}
+        </button>
+    );
+});
+
+/*
+ * The dropdown layout, which a native select cannot do: every option carries
+ * its diagram, so the list reads the same way the tiles do.
+ */
+const StyleOptionDropdown = ({ title, items }) => {
+    const [open, setOpen] = useState(false);
+    const boxRef = useRef(null);
+    const panelRef = useRef(null);
+
+    const selected = items.find((item) => item.isSelected) || items[0];
+
+    useEffect(() => {
+        if (!open) return;
+
+        const onPointerDown = (e) => {
+            if (!boxRef.current?.contains(e.target)) setOpen(false);
+        };
+        const onKeyDown = (e) => {
+            if (e.key === "Escape") setOpen(false);
+        };
+
+        document.addEventListener("pointerdown", onPointerDown);
+        document.addEventListener("keydown", onKeyDown);
+
+        /* The options panel scrolls, so an open list can sit below its edge. */
+        panelRef.current?.scrollIntoView({ block: "nearest" });
+
+        return () => {
+            document.removeEventListener("pointerdown", onPointerDown);
+            document.removeEventListener("keydown", onKeyDown);
+        };
+    }, [open]);
+
+    return (
+        <div className="px-4 pt-4 pb-1 lg:px-5 lg:pt-6">
+            <span className="block text-[11px] lg:text-xs font-bold tracking-wider text-gray-400 uppercase">{title}</span>
+
+            <div ref={boxRef} className="relative mt-2">
+                <button
+                    type="button"
+                    onClick={() => setOpen((v) => !v)}
+                    aria-haspopup="listbox"
+                    aria-expanded={open}
+                    className={`flex items-center w-full gap-3 py-2 pl-2 pr-3 text-left transition-all duration-200 bg-white border rounded-xl ${
+                        open ? "border-gray-900 shadow-sm" : "border-gray-200 hover:border-gray-400"
+                    }`}
+                >
+                    <OptionThumb image={selected?.image} label={selected?.label} />
+                    <span className="flex-1 text-xs font-medium leading-tight text-gray-800 lg:text-sm line-clamp-2">{selected?.label}</span>
+                    <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+                </button>
+
+                {open && (
+                    <div
+                        ref={panelRef}
+                        role="listbox"
+                        className="absolute inset-x-0 z-30 p-1 mt-2 overflow-y-auto bg-white border border-gray-200 shadow-xl rounded-xl max-h-72 thin-scrollbar animate-slide-down"
+                    >
+                        {items.map((item) => (
+                            <button
+                                key={item.key}
+                                type="button"
+                                role="option"
+                                aria-selected={item.isSelected}
+                                onClick={() => { item.onClick?.(); setOpen(false); }}
+                                {...hoverHandlers(item.onHover)}
+                                className={`flex items-center w-full gap-3 p-2 text-left rounded-lg transition-colors duration-150 ${
+                                    item.isSelected ? "bg-gray-50" : "hover:bg-gray-50"
+                                }`}
+                            >
+                                <OptionThumb image={item.image} label={item.label} />
+                                <span className="flex-1 text-xs font-medium leading-tight text-gray-700 lg:text-sm">{item.label}</span>
+                                {item.isSelected && <Check className="w-4 h-4 text-gray-900 shrink-0" />}
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+/*
+ * One group of style options — body style, lapels, sleeves — drawn the way the
+ * admin chose. Every layout takes the same items, so a section is described
+ * once and the presentation is a setting rather than a rewrite.
+ */
+const StyleSection = ({ title, items, layout = "grid", cols = 3 }) => {
+    if (!items || items.length === 0) return null;
+
+    if (layout === "dropdown") return <StyleOptionDropdown title={title} items={items} />;
+
+    if (layout === "list") {
+        return (
+            <>
+                <SectionHeader title={title} />
+                <div className="flex flex-col gap-1.5 px-4 pb-2 lg:px-5">
+                    {items.map((item) => (
+                        <StyleOptionListItem key={item.key} {...item} />
+                    ))}
+                </div>
+            </>
+        );
+    }
+
+    return (
+        <>
+            <SectionHeader title={title} />
+            <OptionRow cols={cols} slider={layout === "slider"}>
+                {items.map((item) => (
+                    <StyleOptionTile key={item.key} {...item} />
+                ))}
+            </OptionRow>
+        </>
+    );
+};
 
 const RailTab = ({ id, icon: Icon, label, isActive, onSelect }) => (
     <button
@@ -1372,6 +1529,7 @@ const LoadingScreen = ({ stage }) => (
 /* ------------------------------------------------------------------ */
 const SuitDesigner = () => {
     const [fabrics, setFabrics] = useState(null);
+    const [layout, setLayout] = useState(DEFAULT_LAYOUT);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -1456,6 +1614,7 @@ const SuitDesigner = () => {
             const payload = await response.json();
             const list = payload?.success ? payload.data || [] : [];
             setFabrics(list);
+            setLayout({ ...DEFAULT_LAYOUT, ...(payload?.layout || {}) });
 
             if (list.length > 0) {
                 const saved = loadSavedDesign();
@@ -1977,7 +2136,7 @@ const SuitDesigner = () => {
                     <div ref={panelScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain thin-scrollbar">
                         {activeTab === "fabric" && (
                             <div key="fabric" className="p-4 lg:p-5 animate-slide-in-left">
-                                <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 lg:gap-x-4 lg:gap-y-7">
+                                <div className={`grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 ${lgCols(layout.fabric_columns)} lg:gap-x-4 lg:gap-y-7`}>
                                     {fabrics.map((fabric) => (
                                         <FabricOptionTile
                                             key={fabric.id}
@@ -1998,118 +2157,94 @@ const SuitDesigner = () => {
 
                         {activeTab === "style" && (
                             <div key="style" className="pb-4 lg:pb-5 animate-slide-in-left">
-                                {selectedFabric.bodies?.length > 0 && (
-                                    <>
-                                        <SectionHeader title="Body Style" />
-                                        <OptionRow>
-                                            {selectedFabric.bodies.map((body) => (
-                                                <StyleOptionTile
-                                                    key={body.id}
-                                                    isSelected={body.id === selectedBody?.id}
-                                                    onClick={() => handleBodyChange(body)}
-                                                    onHover={() => prefetchImage(body.image)}
-                                                    image={body.body_type?.diagram || body.image}
-                                                    label={body.body_type?.name || "Body"}
-                                                    isLoading={isPending("body", body.id)}
-                                                />
-                                            ))}
-                                        </OptionRow>
-                                    </>
-                                )}
+                                <StyleSection
+                                    title="Body Style"
+                                    layout={layout.style_layout}
+                                    cols={layout.style_columns}
+                                    items={(selectedFabric.bodies || []).map((body) => ({
+                                        key: body.id,
+                                        isSelected: body.id === selectedBody?.id,
+                                        onClick: () => handleBodyChange(body),
+                                        onHover: () => prefetchImage(body.image),
+                                        image: body.body_type?.diagram || body.image,
+                                        label: body.body_type?.name || "Body",
+                                        isLoading: isPending("body", body.id),
+                                    }))}
+                                />
 
-                                {lapelCategories.length > 0 && (
-                                    <>
-                                        <SectionHeader title="Lapel Type" />
-                                        <OptionRow>
-                                            {lapelCategories.map((category) => (
-                                                <StyleOptionTile
-                                                    key={category.id}
-                                                    isSelected={selectedLapel?.category?.id === category.id}
-                                                    onClick={() => handleLapelCategoryChange(category)}
-                                                    image={category.diagram}
-                                                    label={category.name}
-                                                    isLoading={isPending("lapelCategory", category.id)}
-                                                />
-                                            ))}
-                                        </OptionRow>
+                                <StyleSection
+                                    title="Lapel Type"
+                                    layout={layout.style_layout}
+                                    cols={layout.style_columns}
+                                    items={lapelCategories.map((category) => ({
+                                        key: category.id,
+                                        isSelected: selectedLapel?.category?.id === category.id,
+                                        onClick: () => handleLapelCategoryChange(category),
+                                        image: category.diagram,
+                                        label: category.name,
+                                        isLoading: isPending("lapelCategory", category.id),
+                                    }))}
+                                />
 
-                                        {filteredLapels.length > 0 && (
-                                            <>
-                                                <SectionHeader title={`${selectedLapel.category?.name ?? "Lapel"} Width`} />
-                                                <OptionRow>
-                                                    {filteredLapels.map((lapel) => (
-                                                        <StyleOptionTile
-                                                            key={lapel.id}
-                                                            isSelected={lapel.id === selectedLapel?.id}
-                                                            onClick={() => handleLapelSelect(lapel)}
-                                                            onHover={() => prefetchImage(lapel.image)}
-                                                            image={lapel.subcategory?.diagram || lapel.image}
-                                                            label={lapel.subcategory?.name || "Width"}
-                                                            isLoading={isPending("lapel", lapel.id)}
-                                                        />
-                                                    ))}
-                                                </OptionRow>
-                                            </>
-                                        )}
-                                    </>
-                                )}
+                                <StyleSection
+                                    title={`${selectedLapel?.category?.name ?? "Lapel"} Width`}
+                                    layout={layout.style_layout}
+                                    cols={layout.style_columns}
+                                    items={filteredLapels.map((lapel) => ({
+                                        key: lapel.id,
+                                        isSelected: lapel.id === selectedLapel?.id,
+                                        onClick: () => handleLapelSelect(lapel),
+                                        onHover: () => prefetchImage(lapel.image),
+                                        image: lapel.subcategory?.diagram || lapel.image,
+                                        label: lapel.subcategory?.name || "Width",
+                                        isLoading: isPending("lapel", lapel.id),
+                                    }))}
+                                />
 
-                                {selectedFabric.sleeves?.length > 0 && (
-                                    <>
-                                        <SectionHeader title="Sleeves" />
-                                        <OptionRow>
-                                            {selectedFabric.sleeves.map((sleeve) => (
-                                                <StyleOptionTile
-                                                    key={sleeve.id}
-                                                    isSelected={sleeve.id === selection.sleeve?.id}
-                                                    onClick={() => handleSleeveSelect(sleeve)}
-                                                    onHover={() => prefetchImage(sleeve.image)}
-                                                    image={sleeve.type?.diagram || sleeve.image}
-                                                    label={sleeve.type?.name || "Sleeve"}
-                                                    isLoading={isPending("sleeve", sleeve.id)}
-                                                />
-                                            ))}
-                                        </OptionRow>
-                                    </>
-                                )}
+                                <StyleSection
+                                    title="Sleeves"
+                                    layout={layout.style_layout}
+                                    cols={layout.style_columns}
+                                    items={(selectedFabric.sleeves || []).map((sleeve) => ({
+                                        key: sleeve.id,
+                                        isSelected: sleeve.id === selection.sleeve?.id,
+                                        onClick: () => handleSleeveSelect(sleeve),
+                                        onHover: () => prefetchImage(sleeve.image),
+                                        image: sleeve.type?.diagram || sleeve.image,
+                                        label: sleeve.type?.name || "Sleeve",
+                                        isLoading: isPending("sleeve", sleeve.id),
+                                    }))}
+                                />
 
-                                {selectedFabric.side_pockets?.length > 0 && (
-                                    <>
-                                        <SectionHeader title="Side Pockets" />
-                                        <OptionRow>
-                                            {selectedFabric.side_pockets.map((pocket) => (
-                                                <StyleOptionTile
-                                                    key={pocket.id}
-                                                    isSelected={pocket.id === selection.sidePocket?.id}
-                                                    onClick={() => handleSidePocketSelect(pocket)}
-                                                    onHover={() => prefetchImage(pocket.image)}
-                                                    image={pocket.type?.diagram || pocket.image}
-                                                    label={pocket.type?.name || "Pocket"}
-                                                    isLoading={isPending("sidePocket", pocket.id)}
-                                                />
-                                            ))}
-                                        </OptionRow>
-                                    </>
-                                )}
+                                <StyleSection
+                                    title="Side Pockets"
+                                    layout={layout.style_layout}
+                                    cols={layout.style_columns}
+                                    items={(selectedFabric.side_pockets || []).map((pocket) => ({
+                                        key: pocket.id,
+                                        isSelected: pocket.id === selection.sidePocket?.id,
+                                        onClick: () => handleSidePocketSelect(pocket),
+                                        onHover: () => prefetchImage(pocket.image),
+                                        image: pocket.type?.diagram || pocket.image,
+                                        label: pocket.type?.name || "Pocket",
+                                        isLoading: isPending("sidePocket", pocket.id),
+                                    }))}
+                                />
 
-                                {selectedFabric.chest_pockets?.length > 0 && (
-                                    <>
-                                        <SectionHeader title="Chest Pockets" />
-                                        <OptionRow>
-                                            {selectedFabric.chest_pockets.map((pocket) => (
-                                                <StyleOptionTile
-                                                    key={pocket.id}
-                                                    isSelected={pocket.id === selection.chestPocket?.id}
-                                                    onClick={() => handleChestPocketSelect(pocket)}
-                                                    onHover={() => prefetchImage(pocket.image)}
-                                                    image={pocket.type?.diagram || pocket.image}
-                                                    label={pocket.type?.name || "Pocket"}
-                                                    isLoading={isPending("chestPocket", pocket.id)}
-                                                />
-                                            ))}
-                                        </OptionRow>
-                                    </>
-                                )}
+                                <StyleSection
+                                    title="Chest Pockets"
+                                    layout={layout.style_layout}
+                                    cols={layout.style_columns}
+                                    items={(selectedFabric.chest_pockets || []).map((pocket) => ({
+                                        key: pocket.id,
+                                        isSelected: pocket.id === selection.chestPocket?.id,
+                                        onClick: () => handleChestPocketSelect(pocket),
+                                        onHover: () => prefetchImage(pocket.image),
+                                        image: pocket.type?.diagram || pocket.image,
+                                        label: pocket.type?.name || "Pocket",
+                                        isLoading: isPending("chestPocket", pocket.id),
+                                    }))}
+                                />
                             </div>
                         )}
 
@@ -2202,7 +2337,7 @@ const SuitDesigner = () => {
                             </div>
 
                             <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain thin-scrollbar">
-                                <div className="grid grid-cols-2 gap-2 p-4 lg:gap-3 lg:p-5 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                                <div className={`grid grid-cols-2 gap-2 p-4 ${lgCols(layout.lining_columns, 2)} lg:gap-3 lg:p-5 pb-[max(1rem,env(safe-area-inset-bottom))]`}>
                                     {selectedFabric.custom_linings?.map((lining) => (
                                         <FabricOptionTile
                                             key={lining.id}
