@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\CustomLining;
 use App\Models\Fabric;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -69,14 +70,6 @@ class SuitConfiguratorController extends Controller
 
             /*
             |--------------------------------------------------------------------------
-            | Custom Linings
-            |--------------------------------------------------------------------------
-            */
-            'customLinings.customLiningFabric',
-            'customLinings.liningType',
-
-            /*
-            |--------------------------------------------------------------------------
             | Default Linings
             |--------------------------------------------------------------------------
             |
@@ -114,10 +107,60 @@ class SuitConfiguratorController extends Controller
             ->orderBy('id')
             ->get();
 
+        /*
+        |--------------------------------------------------------------------------
+        | Custom Linings
+        |--------------------------------------------------------------------------
+        |
+        | Tied to no fabric, so they are read once and offered on every one of
+        | them. Repeating the list per fabric keeps the shape the designer
+        | already reads, and keeps a lining's id stable when the fabric changes
+        | so the customer's choice survives the switch.
+        |
+        */
+
+        $customLinings = CustomLining::query()
+            ->with(['customLiningFabric', 'liningType'])
+            ->where('status', true)
+            ->inDragOrder()
+            ->get()
+            ->map(function ($lining) {
+
+                return [
+                    'id' => $lining->id,
+
+                    'image' => $lining->image,
+
+                    'layer_index' => $lining->layer_index,
+
+                    'is_default' => $lining->is_default,
+
+                    'fabric' => $lining->customLiningFabric
+                        ? [
+                            'id' => $lining->customLiningFabric->id,
+                            'name' => $lining->customLiningFabric->name,
+                            'image' => $lining->customLiningFabric->image,
+                        ]
+                        : null,
+
+                    'type' => $lining->liningType
+                        ? [
+                            'id' => $lining->liningType->id,
+                            'name' => $lining->liningType->name,
+                            'code' => $lining->liningType->code,
+                            'diagram' => $lining->liningType->diagram,
+                        ]
+                        : null,
+                ];
+            })
+            ->values()
+            ->all();
+
+
         return [
             'success' => true,
 
-            'data' => $fabrics->map(function ($fabric) {
+            'data' => $fabrics->map(function ($fabric) use ($customLinings) {
 
                 return [
 
@@ -231,50 +274,7 @@ class SuitConfiguratorController extends Controller
                     |--------------------------------------------------------------------------
                     */
 
-                    'custom_linings' => $fabric->customLinings
-                        ->where('status', true)
-                        ->values()
-                        ->map(function ($lining) {
-
-                            return [
-                                'id' => $lining->id,
-
-                                'image' => $lining->image,
-
-                                'layer_index' => $lining->layer_index,
-
-                                'is_default' => $lining->is_default,
-
-                                /*
-                                |--------------------------------------------------------------------------
-                                | Custom Lining Fabric
-                                |--------------------------------------------------------------------------
-                                */
-
-                                'fabric' => $lining->customLiningFabric
-                                    ? [
-                                        'id' => $lining->customLiningFabric->id,
-                                        'name' => $lining->customLiningFabric->name,
-                                        'image' => $lining->customLiningFabric->image,
-                                    ]
-                                    : null,
-
-                                /*
-                                |--------------------------------------------------------------------------
-                                | Lining Type
-                                |--------------------------------------------------------------------------
-                                */
-
-                                'type' => $lining->liningType
-                                    ? [
-                                        'id' => $lining->liningType->id,
-                                        'name' => $lining->liningType->name,
-                                        'code' => $lining->liningType->code,
-                                        'diagram' => $lining->liningType->diagram,
-                                    ]
-                                    : null,
-                            ];
-                        }),
+                    'custom_linings' => $customLinings,
 
 
                     /*

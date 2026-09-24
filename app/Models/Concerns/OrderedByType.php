@@ -2,6 +2,7 @@
 
 namespace App\Models\Concerns;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
@@ -18,16 +19,16 @@ trait OrderedByType
     /**
      * @param  array<class-string, string>  $types  type model => foreign key, outermost grouping first
      */
-    protected function orderedByType(HasMany $relation, array $types): HasMany
+    protected function orderedByType(HasMany | Builder $query, array $types): HasMany | Builder
     {
-        $table = $relation->getRelated()->getTable();
+        $table = $query->getModel()->getTable();
 
 
         foreach ($types as $type => $foreignKey) {
 
             /* A correlated subquery rather than a join: eager loading rebuilds
                these queries, and a join would collide with its own select. */
-            $relation->orderBy(
+            $query->orderBy(
                 $type::select('sort_order')
                     ->whereColumn((new $type)->getTable().'.id', "{$table}.{$foreignKey}")
             );
@@ -35,7 +36,7 @@ trait OrderedByType
 
 
         /* The option's own order settles ties inside a type; the id settles the rest. */
-        return $relation
+        return $query
             ->orderBy("{$table}.sort_order")
             ->orderBy("{$table}.id");
     }

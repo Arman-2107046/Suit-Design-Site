@@ -132,7 +132,7 @@ Every catalogue table has a **Reorder records** button; the order you drag into 
 | `RL` | Fabric real-life picture (`_N` = slot, `_Caption` = caption) | `RL_Blue Stripe_2 Piece Suit.png` · `RL_Blue Stripe_2_Waistcoat.png` |
 | `LT` | Lining type | `LT_Satin Lining.png` |
 | `CF` | Custom lining fabric | `CF_Blue Silk.png` |
-| `CL` | Custom lining render | `CL_Full Lining_Blue Silk_Black Wool.png` |
+| `CL` | Custom lining render (offered on every fabric) | `CL_Full Lining_Blue Silk.png` |
 | `BT` | Body type | `BT__Single_Breasted_SB1.png` |
 | `BD` | Body render | `BD_SB1_Black_1.png` |
 | `DL` | Default lining render | `DL_SB1_Default_Black Wool.png` |

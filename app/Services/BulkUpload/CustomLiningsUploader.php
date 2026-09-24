@@ -2,7 +2,6 @@
 
 namespace App\Services\BulkUpload;
 
-use App\Models\Fabric;
 use App\Models\CustomLining;
 use App\Models\CustomLiningFabric;
 use App\Models\LiningType;
@@ -26,11 +25,11 @@ class CustomLiningsUploader
         | Remove extension
         |--------------------------------------------------------------------------
         |
-        | CL_Full Lining_Blue Silk_Black Wool.png
+        | CL_Full Lining_Blue Silk.png
         |
         | becomes:
         |
-        | CL_Full Lining_Blue Silk_Black Wool
+        | CL_Full Lining_Blue Silk
         |
         */
 
@@ -46,21 +45,23 @@ class CustomLiningsUploader
         |
         | Expected:
         |
-        | CL_LiningType_LiningFabric_OriginalFabric
+        | CL_LiningType_LiningFabric
         |
         | Example:
         |
-        | CL_Full Lining_Blue Silk_Black Wool
+        | CL_Full Lining_Blue Silk
+        |
+        | A custom lining is offered on every fabric, so nothing names one here.
         |
         */
 
         $parts = explode('_', $filename);
 
-        if (count($parts) !== 4) {
+        if (count($parts) !== 3) {
             return [
                 'success' => false,
                 'message' =>
-                    "{$originalName} — invalid format. Expected: CL_LiningType_LiningFabric_OriginalFabric",
+                    "{$originalName} — invalid format. Expected: CL_LiningType_LiningFabric",
 
                 'debug' => [
                     'filename' => $originalName,
@@ -98,7 +99,6 @@ class CustomLiningsUploader
         |
         | parts[1] = Lining Type Name
         | parts[2] = Custom Lining Fabric Name
-        | parts[3] = Original Fabric Name
         |
         */
 
@@ -108,10 +108,6 @@ class CustomLiningsUploader
 
         $customLiningFabricName = trim(
             $parts[2]
-        );
-
-        $fabricName = trim(
-            $parts[3]
         );
 
         /*
@@ -165,36 +161,11 @@ class CustomLiningsUploader
 
         /*
         |--------------------------------------------------------------------------
-        | Find Original Fabric
-        |--------------------------------------------------------------------------
-        */
-
-        $fabric = Fabric::where(
-            'name',
-            $fabricName
-        )->first();
-
-        if (! $fabric) {
-            return [
-                'success' => false,
-                'message' =>
-                    "{$fabricName} original fabric not found",
-
-                'debug' => [
-                    'filename' => $originalName,
-                    'fabric_searched' => $fabricName,
-                ],
-            ];
-        }
-
-        /*
-        |--------------------------------------------------------------------------
         | Create / Update Custom Lining
         |--------------------------------------------------------------------------
         |
         | Unique combination:
         |
-        | fabric_id
         | custom_lining_fabric_id
         | lining_type_id
         |
@@ -202,8 +173,6 @@ class CustomLiningsUploader
 
         $customLining = CustomLining::updateOrCreate(
             [
-                'fabric_id' => $fabric->id,
-
                 'custom_lining_fabric_id' =>
                     $customLiningFabric->id,
 
@@ -245,11 +214,6 @@ class CustomLiningsUploader
                 'custom_lining_fabric' => [
                     'id' => $customLiningFabric->id,
                     'name' => $customLiningFabric->name,
-                ],
-
-                'original_fabric' => [
-                    'id' => $fabric->id,
-                    'name' => $fabric->name,
                 ],
 
                 'custom_lining' => [

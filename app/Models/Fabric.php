@@ -99,13 +99,7 @@ class Fabric extends Model
         ]);
     }
 
-    public function customLinings()
-    {
-        return $this->orderedByType($this->hasMany(CustomLining::class), [
-            LiningType::class => 'lining_type_id',
-            CustomLiningFabric::class => 'custom_lining_fabric_id',
-        ]);
-    }
+    /* Custom linings hang off no fabric — they are offered on all of them. */
 
     public function defaultLinings(): HasMany
     {
