@@ -2,7 +2,8 @@
 
 namespace App\Filament\Pages;
 
-use App\Filament\Forms\Components\CloudinaryVideoUpload;
+use App\Filament\Forms\Components\StreamVideoUpload;
+use App\Services\Cloudflare\CloudflareStream;
 use App\Models\HomepageSetting;
 use Filament\Actions\Action;
 use Filament\Forms\Components\FileUpload;
@@ -60,9 +61,8 @@ class Homepage extends Page
                     ->description('The device frame next to "High-tech tailoring for every body". A video plays muted on loop; the image is used as its poster, or on its own when there is no video.')
                     ->columns(2)
                     ->components([
-                        CloudinaryVideoUpload::make('designer_video_url')
+                        StreamVideoUpload::make('designer_video_url')
                             ->label('Video')
-                            ->folder('homepage')
                             ->maxMegabytes(200)
                             ->helperText('Landscape, 16:10 or 16:9. Keep it short — it loops.'),
                         $this->imageField('designer', 'Image / poster')->helperText('Shown while the video loads, or instead of it. 16:10.'),
@@ -102,7 +102,7 @@ class Homepage extends Page
     {
         return FileUpload::make("{$name}_image")
             ->label($label)
-            ->disk('cloudinary')
+            ->disk('cloudflare')
             ->directory('homepage')
             ->image()
             ->imageEditor()
@@ -114,7 +114,7 @@ class Homepage extends Page
     {
         return FileUpload::make($name)
             ->label($label)
-            ->disk('cloudinary')
+            ->disk('cloudflare')
             ->directory('homepage/logos')
             ->image()
             ->multiple()
@@ -132,9 +132,9 @@ class Homepage extends Page
 
         $settings = HomepageSetting::current();
         /** @var \Illuminate\Filesystem\FilesystemAdapter $disk */
-        $disk = Storage::disk('cloudinary');
+        $disk = Storage::disk('cloudflare');
 
-        // Resolve public URLs once here so the storefront never has to call Cloudinary's admin API.
+        // Resolve public URLs once here so the storefront never has to ask Cloudflare.
         foreach (HomepageSetting::IMAGES as $image) {
             $path = $data["{$image}_image"] ?? null;
             $previous = $settings->{"{$image}_image"};
@@ -165,12 +165,12 @@ class Homepage extends Page
             }
         }
 
-        // The video is uploaded from the browser, so only the old asset needs cleaning up here.
+        // The video is uploaded from the browser to Stream, so only the old one needs cleaning up here.
         $video = $data['designer_video_url'] ?? null;
-        if ($video !== $settings->designer_video_url && filled($settings->designer_video_url)) {
-            $previous = $this->cloudinaryPath($settings->designer_video_url);
+        if ($video !== $settings->designer_video_url) {
+            $previous = CloudflareStream::uidFromUrl($settings->designer_video_url);
             if ($previous) {
-                rescue(fn () => $disk->delete($previous), report: false);
+                rescue(fn () => app(CloudflareStream::class)->delete($previous), report: false);
             }
         }
 
@@ -180,12 +180,6 @@ class Homepage extends Page
             ->title('Homepage saved')
             ->success()
             ->send();
-    }
-
-    /* https://res.cloudinary.com/<cloud>/video/upload/v123/homepage/abc.mp4 -> homepage/abc.mp4 */
-    private function cloudinaryPath(string $url): ?string
-    {
-        return preg_match('#/(?:image|video)/upload/(?:[^/]+/)*?v\d+/(.+)$#', $url, $m) ? $m[1] : null;
     }
 
     public function content(Schema $schema): Schema

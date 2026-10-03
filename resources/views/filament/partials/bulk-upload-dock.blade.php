@@ -133,8 +133,7 @@
                 const queue = this.files.filter(f => f.status !== 'done');
                 if (queue.length === 0) return;
 
-                this.cloudName = config.cloudName;
-                this.uploadPreset = config.uploadPreset;
+                this.uploadEndpoint = config.uploadEndpoint;
                 this.finalize = config.finalize;
 
                 this.stage = 'uploading';
@@ -160,12 +159,12 @@
                     f.reason = null;
 
                     try {
-                        await this.sendToCloudinary(f);
+                        await this.sendToCloudflare(f);
                         f.status = 'done';
                     } catch (e) {
                         f.status = 'error';
                         f.reason = e.message;
-                        this.rejected.push({ name: f.name, stage: 'Cloudinary upload', reason: e.message });
+                        this.rejected.push({ name: f.name, stage: 'Upload', reason: e.message });
 
                         /* A failed file still counts towards the bar, or it stalls short of the end */
                         this.advance(f, f.size);
@@ -184,7 +183,7 @@
                     .map(f => ({ name: f.name, url: f.url }));
 
                 if (payload.length === 0) {
-                    /* Nothing reached Cloudinary, so the rejects list is the whole story */
+                    /* Nothing reached Cloudflare, so the rejects list is the whole story */
                     this.okCount = 0;
                     this.failCount = this.rejected.length;
                     this.stage = 'done';
@@ -211,14 +210,44 @@
                 this.emit();
             },
 
-            sendToCloudinary(f) {
+            /*
+             * Cloudflare needs a one-time address per file, minted by the server
+             * so the API token never reaches the browser; the file then goes
+             * straight to Cloudflare without passing through PHP.
+             */
+            async sendToCloudflare(f) {
+                const target = await this.mintUploadUrl();
+                await this.postFile(f, target.uploadURL);
+            },
+
+            async mintUploadUrl() {
+                let res;
+
+                try {
+                    res = await fetch(this.uploadEndpoint, {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': this.csrf() },
+                    });
+                } catch (e) {
+                    throw new Error('Could not reach the server for an upload address');
+                }
+
+                const body = await res.json().catch(() => ({}));
+
+                if (!res.ok || !body.uploadURL) {
+                    throw new Error(body.message || 'The server could not get an upload address (HTTP ' + res.status + ')');
+                }
+
+                return body;
+            },
+
+            postFile(f, uploadURL) {
                 return new Promise((resolve, reject) => {
                     const form = new FormData();
                     form.append('file', f.file);
-                    form.append('upload_preset', this.uploadPreset);
 
                     const xhr = new XMLHttpRequest();
-                    xhr.open('POST', 'https://api.cloudinary.com/v1_1/' + this.cloudName + '/image/upload');
+                    xhr.open('POST', uploadURL);
 
                     /* Byte-level progress is the whole reason this is XHR and not fetch */
                     xhr.upload.addEventListener('progress', (e) => {
@@ -227,28 +256,38 @@
 
                     xhr.addEventListener('load', () => {
                         if (xhr.status - 200 >= 100 || xhr.status - 200 < 0) {
-                            console.error('Cloudinary upload failed for', f.name, xhr.responseText);
-                            reject(new Error(this.cloudinaryReason(xhr.responseText, xhr.status)));
+                            console.error('Cloudflare upload failed for', f.name, xhr.responseText);
+                            reject(new Error(this.cloudflareReason(xhr.responseText, xhr.status)));
                             return;
                         }
 
                         this.advance(f, f.size);
 
                         try {
-                            f.url = JSON.parse(xhr.responseText).secure_url;
+                            f.url = this.publicVariant(JSON.parse(xhr.responseText).result?.variants);
                         } catch (e) {
-                            reject(new Error('Cloudinary sent back a response we could not read'));
+                            f.url = null;
+                        }
+
+                        if (!f.url) {
+                            reject(new Error('Cloudflare sent back a response we could not read'));
                             return;
                         }
 
                         resolve();
                     });
 
-                    xhr.addEventListener('error', () => reject(new Error('Network error while reaching Cloudinary')));
-                    xhr.addEventListener('timeout', () => reject(new Error('Cloudinary took too long to respond')));
+                    xhr.addEventListener('error', () => reject(new Error('Network error while reaching Cloudflare')));
+                    xhr.addEventListener('timeout', () => reject(new Error('Cloudflare took too long to respond')));
 
                     xhr.send(form);
                 });
+            },
+
+            /* The full-size address; the site asks for smaller sizes itself. */
+            publicVariant(variants) {
+                const list = variants || [];
+                return list.find((v) => v.endsWith('/public')) || list[0] || null;
             },
 
             advance(f, loaded) {
@@ -259,7 +298,7 @@
                 this.emitSoon();
             },
 
-            /* Files that reached Cloudinary but the server would not file */
+            /* Files that reached Cloudflare but the server would not file */
             absorbFilingRejects() {
                 for (const row of this.summary?.rejected ?? []) {
                     this.rejected.push({ name: row.file, stage: 'Filing', reason: row.reason });
@@ -310,14 +349,14 @@
                 return mb - 1 >= 0 ? mb.toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
             },
 
-            cloudinaryReason(body, status) {
+            cloudflareReason(body, status) {
                 try {
-                    const parsed = JSON.parse(body);
-                    if (parsed && parsed.error && parsed.error.message) return parsed.error.message;
+                    const message = JSON.parse(body)?.errors?.[0]?.message;
+                    if (message) return message;
                 } catch (e) {
                     /* not JSON, so fall through to the status code */
                 }
-                return 'Cloudinary refused the file (HTTP ' + status + ')';
+                return 'Cloudflare refused the file (HTTP ' + status + ')';
             },
 
             csrf() {

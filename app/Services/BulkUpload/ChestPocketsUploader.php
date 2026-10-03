@@ -35,7 +35,7 @@ class ChestPocketsUploader
             if (! $url) {
                 return [
                     'success' => false,
-                    'message' => "STEP 1 FAILED: Cloudinary URL is missing for {$originalName}.",
+                    'message' => "STEP 1 FAILED: image URL is missing for {$originalName}.",
                     'debug' => [
                         'file_name' => $originalName,
                         'received_data' => $file,

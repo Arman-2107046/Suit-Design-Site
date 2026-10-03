@@ -37,9 +37,9 @@ class BlogPost extends Model
 
             if ($post->isDirty('cover_image')) {
                 $previous = $post->getOriginal('cover_image');
-                $post->cover_image_url = filled($post->cover_image) ? Storage::disk('cloudinary')->url($post->cover_image) : null;
+                $post->cover_image_url = filled($post->cover_image) ? Storage::disk('cloudflare')->url($post->cover_image) : null;
                 if (filled($previous) && $previous !== $post->cover_image) {
-                    rescue(fn () => Storage::disk('cloudinary')->delete($previous), report: false);
+                    rescue(fn () => Storage::disk('cloudflare')->delete($previous), report: false);
                 }
             }
         });

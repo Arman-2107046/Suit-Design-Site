@@ -2,12 +2,8 @@ import StoreLayout from "@/Layouts/StoreLayout";
 import { cartSubtotal, money, removeFromCart, setCartQuantity, useBodyProfile, useCart } from "@/lib/store";
 import { Head, Link } from "@inertiajs/react";
 import { ArrowRight, Check, Minus, Plus, Ruler, Trash2 } from "lucide-react";
+import { resizeImage as cdn } from "@/lib/media";
 
-const CLOUDINARY_UPLOAD = /^(https?:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(v\d+\/.+)$/;
-const cdn = (url, width) => {
-    const m = url && CLOUDINARY_UPLOAD.exec(url);
-    return m ? `${m[1]}f_auto,q_auto,w_${width}/${m[2]}` : url;
-};
 
 const Card = ({ className = "", children, ...rest }) => (
     <div {...rest} className={`rounded-3xl bg-white shadow-[0_1px_0_rgba(0,0,0,0.04),0_20px_50px_-30px_rgba(0,0,0,0.15)] ${className}`}>

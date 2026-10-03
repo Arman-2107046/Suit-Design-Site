@@ -1,12 +1,10 @@
 import { Footer } from "@/Components/Site/Footer";
 import { Header } from "@/Components/Site/Header";
 import { usePage } from "@inertiajs/react";
+import { resizeImage } from "@/lib/media";
 
-const CLOUDINARY_UPLOAD = /^(https?:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(v\d+\/.+)$/;
-export const cdn = (url, width) => {
-    const m = url && CLOUDINARY_UPLOAD.exec(url);
-    return m ? `${m[1]}f_auto,q_auto,w_${width}/${m[2]}` : url;
-};
+/* Re-exported for the journal and support pages, which size their own images. */
+export const cdn = resizeImage;
 
 /*
  * Frame for content and support pages: the storefront header (solid) and

@@ -14,7 +14,7 @@ class BulkUploadReportController extends Controller
      * a PDF to read, or a CSV to work through.
      *
      * The list arrives from the browser because half of it never reaches us:
-     * files that fail at Cloudinary are only ever known client-side. It is
+     * files that fail at Cloudflare are only ever known client-side. It is
      * treated as untrusted text — validated, capped, and escaped on the way out.
      */
     public function __invoke(Request $request): Response

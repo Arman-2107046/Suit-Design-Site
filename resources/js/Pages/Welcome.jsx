@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useR
 import { Head, Link } from "@inertiajs/react";
 import { addToCart, cartCount, summarizeDesign, useCart } from "@/lib/store";
 import { Loader2, Layers, Scissors, Palette, Menu, X, RotateCcw, Maximize2, ArrowLeft, ArrowRight, ShoppingBag, Check, Info, Images, Share2, Heart, ChevronLeft, ChevronRight, ChevronDown, Plus } from "lucide-react";
+import { resizeImage as optimizeUrl } from "@/lib/media";
 
 const STORAGE_KEY = "custom-tailor.design.v1";
 const CANVAS_TIMEOUT_MS = 8000;
@@ -9,20 +10,9 @@ const CANVAS_TIMEOUT_MS = 8000;
 /* ------------------------------------------------------------------ */
 /*  Image URLs                                                         */
 /*                                                                     */
-/*  Layer renders are stored as ~2-4 MB PNGs (2291x2727). Cloudinary   */
-/*  can transcode + resize on the fly, so we ask for a device-sized    */
-/*  WebP/AVIF instead (~50-200 KB) — that is what turns a fabric swap  */
-/*  from a long buffer into a short one. Non-Cloudinary URLs and URLs  */
-/*  that already carry a transformation are left untouched.            */
+/*  Layer renders are 2-4 MB PNGs; the image host hands back a         */
+/*  device-sized AVIF/WebP instead. See resources/js/lib/media.js.     */
 /* ------------------------------------------------------------------ */
-const CLOUDINARY_UPLOAD = /^(https?:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(v\d+\/.+)$/;
-
-function optimizeUrl(url, width) {
-    if (!url) return url;
-    const m = CLOUDINARY_UPLOAD.exec(url);
-    if (!m) return url;
-    return `${m[1]}f_auto,q_auto${width ? `,w_${width}` : ""}/${m[2]}`;
-}
 
 /* Largest the suit can be drawn on this device, in physical pixels, rounded to a cache-friendly step. */
 function pickLayerWidth() {

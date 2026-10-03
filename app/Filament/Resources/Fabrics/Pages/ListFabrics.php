@@ -36,8 +36,6 @@ class ListFabrics extends ListRecords
                 ->modalSubmitAction(false)
                 ->modalCancelActionLabel('Close')
                 ->modalContent(fn () => view('filament.modals.bulk-upload-images', [
-                    'cloudName' => $this->getCloudinaryCloudName(),
-                    'uploadPreset' => env('CLOUDINARY_UPLOAD_PRESET', ''),
                     'title' => 'Upload fabric pictures',
                     'subtitle' => 'Preview and real-life pictures, up to 10 of each per fabric',
                     'filenameHint' => 'FPI_Blue Stripe_1.png · RL_Blue Stripe_2 Piece Suit.png',
@@ -51,8 +49,6 @@ class ListFabrics extends ListRecords
                 ->modalSubmitAction(false)
                 ->modalCancelActionLabel('Close')
                 ->modalContent(fn () => view('filament.modals.bulk-upload-images', [
-                    'cloudName' => $this->getCloudinaryCloudName(),
-                    'uploadPreset' => env('CLOUDINARY_UPLOAD_PRESET', ''),
                     'title' => 'Upload Fabric Images',
                     'subtitle' => 'Drag & drop fabric images here, or click to browse',
                     'filenameHint' => 'Name__Price__Default__Status.png',
@@ -169,20 +165,5 @@ class ListFabrics extends ListRecords
             ->success($result['success'])
             ->warning(! $result['success'])
             ->send();
-    }
-
-    private function getCloudinaryCloudName(): string
-    {
-        $cloud = env('CLOUDINARY_CLOUD_NAME', '');
-
-        if (empty($cloud)) {
-            $cloudinaryUrl = env('CLOUDINARY_URL');
-
-            if ($cloudinaryUrl) {
-                $cloud = parse_url($cloudinaryUrl, PHP_URL_HOST) ?? '';
-            }
-        }
-
-        return $cloud;
     }
 }

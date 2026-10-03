@@ -3,12 +3,13 @@ import { Footer } from "@/Components/Site/Footer";
 import { Header } from "@/Components/Site/Header";
 import { Head, Link, usePage } from "@inertiajs/react";
 import { ChevronLeft, ChevronRight, ArrowRight, ArrowUpRight } from "lucide-react";
+import { resizeImage as swatchUrl, videoUrl, videoPoster } from "@/lib/media";
 
 /* ------------------------------------------------------------------ */
 /*  Photography                                                        */
 /*                                                                     */
 /*  Editorial photos are managed in the admin (Homepage page) and      */
-/*  served from Cloudinary. A slot without a photo renders a toned     */
+/*  served from Cloudflare. A slot without a photo renders a toned     */
 /*  panel so the layout reads as intended.                             */
 /* ------------------------------------------------------------------ */
 const TONES = {
@@ -40,12 +41,6 @@ const Photo = ({ src, alt = "", className = "", tone = "stone", position = "obje
     );
 };
 
-/* Cloudinary URLs get a device-sized, auto-format variant; anything else is served as-is. */
-const CLOUDINARY_UPLOAD = /^(https?:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(v\d+\/.+)$/;
-const swatchUrl = (url, width) => {
-    const m = url && CLOUDINARY_UPLOAD.exec(url);
-    return m ? `${m[1]}f_auto,q_auto,w_${width}/${m[2]}` : url;
-};
 
 const money = (value) => `$${Math.round(Number(value) || 0)}`;
 
@@ -424,16 +419,6 @@ const Process = () => (
     </section>
 );
 
-/* Cloudinary video: capped width, auto codec/quality; the poster is a frame from the video unless an image is set. */
-const CLOUDINARY_VIDEO = /^(https?:\/\/res\.cloudinary\.com\/[^/]+\/video\/upload\/)(v\d+\/.+)$/;
-const videoUrl = (url) => {
-    const m = url && CLOUDINARY_VIDEO.exec(url);
-    return m ? `${m[1]}f_auto,q_auto,w_1600,c_limit/${m[2]}` : url;
-};
-const videoPoster = (url) => {
-    const m = url && CLOUDINARY_VIDEO.exec(url);
-    return m ? `${m[1]}so_0,f_auto,q_auto,w_1600,c_limit/${m[2].replace(/\.[a-z0-9]+$/i, ".jpg")}` : null;
-};
 
 const Designer = ({ image, video }) => (
     <section id="how-it-works" className="py-16 bg-[#f7f6f3] sm:py-24 lg:py-32 scroll-mt-16">

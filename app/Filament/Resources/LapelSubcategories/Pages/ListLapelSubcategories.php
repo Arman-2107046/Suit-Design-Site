@@ -36,8 +36,6 @@ class ListLapelSubcategories extends ListRecords
                 ->modalContent(fn () => view(
                     'filament.modals.bulk-upload-images',
                     [
-                        'cloudName' => $this->getCloudinaryCloudName(),
-                        'uploadPreset' => env('CLOUDINARY_UPLOAD_PRESET', ''),
                         'title' => 'Upload Lapel Subcategory Images',
                         'subtitle' => 'Drag & drop lapel subcategory images here, or click to browse',
                         'filenameHint' => 'Slim.png',
@@ -104,23 +102,5 @@ class ListLapelSubcategories extends ListRecords
             ->success(empty($failed))
             ->warning(! empty($failed))
             ->send();
-    }
-
-    private function getCloudinaryCloudName(): string
-    {
-        $cloud = env('CLOUDINARY_CLOUD_NAME', '');
-
-        if (empty($cloud)) {
-            $cloudinaryUrl = env('CLOUDINARY_URL');
-
-            if ($cloudinaryUrl) {
-                $cloud = parse_url(
-                    $cloudinaryUrl,
-                    PHP_URL_HOST
-                ) ?? '';
-            }
-        }
-
-        return $cloud;
     }
 }

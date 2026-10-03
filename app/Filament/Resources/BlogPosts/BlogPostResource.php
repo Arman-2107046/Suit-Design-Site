@@ -62,7 +62,7 @@ class BlogPostResource extends Resource
                 ]),
                 Section::make('Story')->components([
                     RichEditor::make('body')->hiddenLabel()->required()
-                        ->fileAttachmentsDisk('cloudinary')->fileAttachmentsDirectory('journal')
+                        ->fileAttachmentsDisk('cloudflare')->fileAttachmentsDirectory('journal')
                         ->toolbarButtons(['h2', 'h3', 'bold', 'italic', 'underline', 'strike', 'link', 'blockquote', 'bulletList', 'orderedList', 'attachFiles', 'undo', 'redo']),
                 ]),
                 Section::make('Search preview')->description('How the story appears on Google and when shared. Leave empty to use the title and excerpt.')->columns(2)->components([
@@ -79,7 +79,7 @@ class BlogPostResource extends Resource
                     Select::make('user_id')->label('Author')->relationship('author', 'name')->default(fn () => auth()->id())->searchable()->preload()->required(),
                 ]),
                 Section::make('Cover')->components([
-                    FileUpload::make('cover_image')->hiddenLabel()->disk('cloudinary')->directory('journal')->image()->imageEditor()->imageEditorAspectRatios(['16:9', '3:2', '4:5'])->maxSize(10240)->fetchFileInformation(false)
+                    FileUpload::make('cover_image')->hiddenLabel()->disk('cloudflare')->directory('journal')->image()->imageEditor()->imageEditorAspectRatios(['16:9', '3:2', '4:5'])->maxSize(10240)->fetchFileInformation(false)
                         ->helperText('Landscape, at least 2000px wide.'),
                     TextInput::make('cover_caption')->label('Caption / credit')->maxLength(160),
                 ]),

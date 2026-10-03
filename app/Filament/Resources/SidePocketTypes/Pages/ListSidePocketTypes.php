@@ -31,8 +31,6 @@ class ListSidePocketTypes extends ListRecords
                 ->modalContent(fn () => view(
                     'filament.modals.bulk-upload-images',
                     [
-                        'cloudName' => $this->getCloudinaryCloudName(),
-                        'uploadPreset' => env('CLOUDINARY_UPLOAD_PRESET', ''),
                         'title' => 'Upload Side Pocket Type Images',
                         'subtitle' => 'Drag & drop Side Pocket Type images here, or click to browse',
                         'filenameHint' => 'Single_Welt.png',
@@ -147,23 +145,5 @@ class ListSidePocketTypes extends ListRecords
             ->send();
 
         $this->resetTable();
-    }
-
-    private function getCloudinaryCloudName(): string
-    {
-        $cloud = env('CLOUDINARY_CLOUD_NAME', '');
-
-        if (empty($cloud)) {
-            $cloudinaryUrl = env('CLOUDINARY_URL');
-
-            if ($cloudinaryUrl) {
-                $cloud = parse_url(
-                    $cloudinaryUrl,
-                    PHP_URL_HOST
-                ) ?? '';
-            }
-        }
-
-        return $cloud;
     }
 }

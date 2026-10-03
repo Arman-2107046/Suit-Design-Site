@@ -1,11 +1,8 @@
 import { Link, usePage } from '@inertiajs/react';
 import { ArrowLeft } from 'lucide-react';
+import { resizeImage } from "@/lib/media";
 
-const CLOUDINARY_UPLOAD = /^(https?:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(v\d+\/.+)$/;
-const heroUrl = (url) => {
-    const m = url && CLOUDINARY_UPLOAD.exec(url);
-    return m ? `${m[1]}f_auto,q_auto,w_1600/${m[2]}` : url;
-};
+const heroUrl = (url) => resizeImage(url, 1600);
 
 /*
  * Split-screen frame for every guest page: editorial panel on the left

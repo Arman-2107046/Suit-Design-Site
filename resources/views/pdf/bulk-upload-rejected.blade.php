@@ -193,7 +193,7 @@
 
 <div class="note">
     <b>Filenames decide where an image lands.</b>
-    A file rejected at filing reached Cloudinary but its name did not match a prefix, or the record it
+    A file rejected at filing reached Cloudflare but its name did not match a prefix, or the record it
     names does not exist yet — for example a fabric image uploaded before its fabric. Fix the name or
     create the parent record, then upload the listed files again.
 </div>

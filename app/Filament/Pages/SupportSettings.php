@@ -77,7 +77,7 @@ class SupportSettings extends Page
     {
         return FileUpload::make("{$name}_image")
             ->label($label)
-            ->disk('cloudinary')
+            ->disk('cloudflare')
             ->directory('support')
             ->image()
             ->imageEditor()

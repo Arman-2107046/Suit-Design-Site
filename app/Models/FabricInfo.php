@@ -39,7 +39,7 @@ class FabricInfo extends Model
                 $icon = $badge['icon'] ?? null;
                 $badges[] = [
                     'icon' => $icon,
-                    'icon_url' => filled($icon) ? ($previous[$icon]['icon_url'] ?? Storage::disk('cloudinary')->url($icon)) : null,
+                    'icon_url' => filled($icon) ? ($previous[$icon]['icon_url'] ?? Storage::disk('cloudflare')->url($icon)) : null,
                     'name' => trim((string) ($badge['name'] ?? '')),
                 ];
             }
@@ -47,13 +47,13 @@ class FabricInfo extends Model
             $info->badges = array_slice($badges, 0, self::MAX_BADGES);
 
             foreach ($previous->keys()->filter()->diff(collect($badges)->pluck('icon')->filter()) as $removed) {
-                rescue(fn () => Storage::disk('cloudinary')->delete($removed), report: false);
+                rescue(fn () => Storage::disk('cloudflare')->delete($removed), report: false);
             }
         });
 
         static::deleted(function (FabricInfo $info) {
             foreach (collect($info->badges ?? [])->pluck('icon')->filter() as $icon) {
-                rescue(fn () => Storage::disk('cloudinary')->delete($icon), report: false);
+                rescue(fn () => Storage::disk('cloudflare')->delete($icon), report: false);
             }
         });
     }

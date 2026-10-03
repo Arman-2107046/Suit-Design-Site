@@ -3,15 +3,11 @@ import { Head, Link, usePage } from '@inertiajs/react';
 import { cartCount, useCart } from '@/lib/store';
 import { ArrowRight, ArrowUpRight, Package, Ruler, Scissors, Shirt, ShoppingBag, UserRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { resizeImage as cdn } from "@/lib/media";
 
 /* Same key the designer saves to. */
 const STORAGE_KEY = 'custom-tailor.design.v1';
 
-const CLOUDINARY_UPLOAD = /^(https?:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(v\d+\/.+)$/;
-const cdn = (url, width) => {
-    const m = url && CLOUDINARY_UPLOAD.exec(url);
-    return m ? `${m[1]}f_auto,q_auto,w_${width}/${m[2]}` : url;
-};
 
 const money = (value) => `$${Math.round(Number(value) || 0)}`;
 

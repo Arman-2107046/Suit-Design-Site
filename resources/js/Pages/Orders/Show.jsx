@@ -2,14 +2,10 @@ import StoreLayout from "@/Layouts/StoreLayout";
 import { money } from "@/lib/store";
 import { Head, Link, usePage } from "@inertiajs/react";
 import { ArrowRight, Check, Package, Ruler, Truck } from "lucide-react";
+import { resizeImage as cdn } from "@/lib/media";
 
 const STEPS = ["Bag", "Body profile", "Delivery & payment", "Done"];
 
-const CLOUDINARY_UPLOAD = /^(https?:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(v\d+\/.+)$/;
-const cdn = (url, width) => {
-    const m = url && CLOUDINARY_UPLOAD.exec(url);
-    return m ? `${m[1]}f_auto,q_auto,w_${width}/${m[2]}` : url;
-};
 
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }) : null);
 

@@ -4,6 +4,7 @@ import { cartSubtotal, clearCart, money, useBodyProfile, useCart } from "@/lib/s
 import { Head, Link, useForm, usePage } from "@inertiajs/react";
 import { ArrowRight, Banknote, Check, ChevronUp, Landmark, Lock, Pencil, Ruler, ShoppingBag } from "lucide-react";
 import { useEffect, useState } from "react";
+import { resizeImage as cdn } from "@/lib/media";
 
 const STEPS = ["Bag", "Body profile", "Delivery & payment", "Done"];
 
@@ -18,11 +19,6 @@ const PAYMENT = {
     bank_transfer: { icon: Landmark, title: "Bank transfer", body: "We email you our bank details; production starts once the transfer clears." },
 };
 
-const CLOUDINARY_UPLOAD = /^(https?:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(v\d+\/.+)$/;
-const cdn = (url, width) => {
-    const m = url && CLOUDINARY_UPLOAD.exec(url);
-    return m ? `${m[1]}f_auto,q_auto,w_${width}/${m[2]}` : url;
-};
 
 const inputCls = "mt-1.5 block w-full rounded-xl border-gray-200 bg-white px-4 py-3 text-[15px] placeholder-gray-400 focus:border-gray-900 focus:ring-0";
 

@@ -1,12 +1,8 @@
 import { Link, usePage } from "@inertiajs/react";
 import { ArrowRight, Facebook, Instagram } from "lucide-react";
 import { useState } from "react";
+import { resizeImage as swatchUrl } from "@/lib/media";
 
-const CLOUDINARY_UPLOAD = /^(https?:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(v\d+\/.+)$/;
-const swatchUrl = (url, width) => {
-    const m = url && CLOUDINARY_UPLOAD.exec(url);
-    return m ? `${m[1]}f_auto,q_auto,w_${width}/${m[2]}` : url;
-};
 
 const Brand = ({ d, className }) => (
     <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden="true">

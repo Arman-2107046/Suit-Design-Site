@@ -87,7 +87,7 @@ class FabricInfoResource extends Resource
                             ->schema([
                                 FileUpload::make('icon')
                                     ->label('Icon')
-                                    ->disk('cloudinary')
+                                    ->disk('cloudflare')
                                     ->directory('fabric-icons')
                                     ->image()
                                     ->maxSize(1024)

@@ -28,9 +28,9 @@ class SiteSetting extends Model
                 }
                 $path = $settings->{"{$image}_image"};
                 $previous = $settings->getOriginal("{$image}_image");
-                $settings->{"{$image}_image_url"} = filled($path) ? Storage::disk('cloudinary')->url($path) : null;
+                $settings->{"{$image}_image_url"} = filled($path) ? Storage::disk('cloudflare')->url($path) : null;
                 if (filled($previous) && $previous !== $path) {
-                    rescue(fn () => Storage::disk('cloudinary')->delete($previous), report: false);
+                    rescue(fn () => Storage::disk('cloudflare')->delete($previous), report: false);
                 }
             }
         });

@@ -25,7 +25,8 @@
             .cv-bar button:hover { text-decoration: underline; }
             .cv-bar button.cv-remove { color: var(--danger-300); }
             .cv-progress { padding: 1rem; border-radius: 0.5rem; background: var(--gray-50); box-shadow: inset 0 0 0 1px var(--gray-200); font-size: 0.875rem; color: var(--gray-700); }
-            .cv-progress .cv-row { display: flex; justify-content: space-between; }
+            .cv-progress .cv-row { display: flex; justify-content: space-between; gap: 1rem; }
+            .cv-progress .cv-hint { margin-top: 0.375rem; font-size: 0.75rem; color: var(--gray-500); }
             .cv-progress .cv-track { width: 100%; height: 0.375rem; margin-top: 0.5rem; overflow: hidden; border-radius: 9999px; background: var(--gray-200); }
             .cv-progress .cv-fill { height: 100%; background: var(--primary-600); transition: width 0.2s; }
             .cv-error { font-size: 0.875rem; color: var(--danger-600); }
@@ -35,17 +36,22 @@
     <div
         x-data="{
             state: $wire.$entangle('{{ $statePath }}'),
-            cloudName: @js($getCloudName()),
-            preset: @js($getUploadPreset()),
-            folder: @js($getFolder()),
+            uploadUrl: @js(route('admin.uploads.video')),
+            statusUrl: @js(route('admin.uploads.video.status', ['uid' => '__UID__'])),
             maxBytes: {{ $getMaxMegabytes() }} * 1024 * 1024,
-            progress: null,
+
+            /* uploading | encoding | rendering, or null when idle */
+            phase: null,
+            progress: 0,
             error: null,
             dragging: false,
+            timer: null,
 
             pick() { this.$refs.input.click(); },
 
-            handle(files) {
+            csrf() { return document.querySelector('meta[name=csrf-token]')?.content ?? ''; },
+
+            async handle(files) {
                 const file = files?.[0];
                 if (! file) return;
                 this.error = null;
@@ -58,48 +64,89 @@
                     this.error = 'That video is larger than {{ $getMaxMegabytes() }} MB.';
                     return;
                 }
-                if (! this.cloudName || ! this.preset) {
-                    this.error = 'Cloudinary is not configured.';
+
+                this.phase = 'uploading';
+                this.progress = 0;
+
+                let target;
+                try {
+                    const res = await fetch(this.uploadUrl, {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': this.csrf() },
+                    });
+                    target = await res.json();
+                    if (! res.ok) throw new Error(target.message || 'HTTP ' + res.status);
+                } catch (e) {
+                    this.fail('Cloudflare would not accept an upload: ' + e.message);
                     return;
                 }
 
                 const form = new FormData();
                 form.append('file', file);
-                form.append('upload_preset', this.preset);
-                form.append('folder', this.folder);
 
                 const xhr = new XMLHttpRequest();
-                xhr.open('POST', `https://api.cloudinary.com/v1_1/${this.cloudName}/video/upload`);
+                xhr.open('POST', target.uploadURL);
                 xhr.upload.onprogress = (e) => {
                     if (e.lengthComputable) this.progress = Math.round((e.loaded / e.total) * 100);
                 };
                 xhr.onload = () => {
-                    this.progress = null;
-                    if (xhr.status < 200 || xhr.status >= 300) {
-                        this.error = 'Upload failed. Please try again.';
+                    if (xhr.status - 200 >= 100 || xhr.status - 200 < 0) {
+                        this.fail('Upload failed. Please try again.');
                         return;
                     }
-                    this.state = JSON.parse(xhr.responseText).secure_url;
+                    this.waitFor(target.uid);
                 };
-                xhr.onerror = () => {
-                    this.progress = null;
-                    this.error = 'Upload failed. Check your connection and try again.';
-                };
-                this.progress = 0;
+                xhr.onerror = () => this.fail('Upload failed. Check your connection and try again.');
                 xhr.send(form);
             },
 
+            /* Stream encodes, then renders the MP4; the address is saved only once it plays. */
+            waitFor(uid) {
+                this.phase = 'encoding';
+                this.progress = 0;
+
+                const check = async () => {
+                    try {
+                        const res = await fetch(this.statusUrl.replace('__UID__', uid), { headers: { 'Accept': 'application/json' } });
+                        const status = await res.json();
+                        if (! res.ok) throw new Error(status.message || 'HTTP ' + res.status);
+
+                        if (status.state === 'ready' && status.url) {
+                            this.state = status.url;
+                            this.phase = null;
+                            return;
+                        }
+
+                        this.phase = status.state;
+                        this.progress = Math.round(status.percent || 0);
+                    } catch (e) {
+                        /* A blip while polling is not a failed upload; try again shortly. */
+                    }
+
+                    this.timer = setTimeout(check, 3000);
+                };
+
+                check();
+            },
+
+            fail(message) {
+                this.phase = null;
+                this.error = message;
+            },
+
             remove() { this.state = null; this.error = null; },
+
+            destroy() { clearTimeout(this.timer); },
         }"
         class="cv-upload"
     >
         <input type="file" accept="video/*" x-ref="input" x-on:change="handle($event.target.files); $event.target.value = ''" @disabled($isDisabled) />
 
-        <template x-if="state && progress === null">
+        <template x-if="state && ! phase">
             <div class="cv-preview">
                 <video x-bind:src="state" controls muted playsinline preload="metadata"></video>
                 <div class="cv-bar">
-                    <span class="cv-name" x-text="state.split('/').pop()"></span>
+                    <span class="cv-name">Cloudflare Stream</span>
                     @unless ($isDisabled)
                         <div class="cv-actions">
                             <button type="button" x-on:click="pick()">Replace</button>
@@ -110,17 +157,18 @@
             </div>
         </template>
 
-        <template x-if="progress !== null">
+        <template x-if="phase">
             <div class="cv-progress">
                 <div class="cv-row">
-                    <span>Uploading to Cloudinary…</span>
+                    <span x-text="{ uploading: 'Uploading to Cloudflare…', encoding: 'Encoding on Cloudflare…', rendering: 'Preparing the MP4…' }[phase]"></span>
                     <span x-text="progress + '%'"></span>
                 </div>
                 <div class="cv-track"><div class="cv-fill" x-bind:style="'width:' + progress + '%'"></div></div>
+                <p class="cv-hint" x-show="phase !== 'uploading'">Usually under a minute. Stay on this page — the video is saved once it is ready to play.</p>
             </div>
         </template>
 
-        <template x-if="! state && progress === null">
+        <template x-if="! state && ! phase">
             <button
                 type="button"
                 class="cv-drop"
@@ -132,7 +180,7 @@
                 @disabled($isDisabled)
             >
                 <strong>Drag &amp; drop a video, or click to browse</strong>
-                <small>MP4 or WebM, up to {{ $getMaxMegabytes() }} MB. Uploads directly to Cloudinary.</small>
+                <small>MP4 or WebM, up to {{ $getMaxMegabytes() }} MB. Uploads directly to Cloudflare Stream.</small>
             </button>
         </template>
 

@@ -19,9 +19,9 @@ class Page extends Model
         static::saving(function (Page $page) {
             if ($page->isDirty('hero_image')) {
                 $previous = $page->getOriginal('hero_image');
-                $page->hero_image_url = filled($page->hero_image) ? Storage::disk('cloudinary')->url($page->hero_image) : null;
+                $page->hero_image_url = filled($page->hero_image) ? Storage::disk('cloudflare')->url($page->hero_image) : null;
                 if (filled($previous) && $previous !== $page->hero_image) {
-                    rescue(fn () => Storage::disk('cloudinary')->delete($previous), report: false);
+                    rescue(fn () => Storage::disk('cloudflare')->delete($previous), report: false);
                 }
             }
         });

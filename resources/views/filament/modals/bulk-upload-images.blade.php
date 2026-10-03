@@ -511,8 +511,7 @@
 --}}
 <div
     x-data="{
-        cloudName: @js($cloudName),
-        uploadPreset: @js($uploadPreset),
+        uploadEndpoint: @js(route('admin.uploads.image')),
         wireMethod: @js($wireMethod ?? null),
         processUrl: @js($processUrl ?? null),
         reportUrl: @js(route('admin.bulk-upload.report')),
@@ -569,14 +568,8 @@
         },
 
         uploadAll() {
-            if (!this.cloudName || !this.uploadPreset) {
-                alert('Cloudinary cloud name or upload preset is not configured.');
-                return;
-            }
-
             window.bulkUploadQueue.start({
-                cloudName: this.cloudName,
-                uploadPreset: this.uploadPreset,
+                uploadEndpoint: this.uploadEndpoint,
                 finalize: (payload) => this.file(payload),
             });
         },
@@ -658,7 +651,7 @@
         },
 
         get stageLabel() {
-            if (this.s.stage === 'uploading') return 'Uploading to Cloudinary';
+            if (this.s.stage === 'uploading') return 'Uploading to Cloudflare';
             if (this.s.stage === 'filing') return 'Filing images';
             return 'Batch complete';
         },

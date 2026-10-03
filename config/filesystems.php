@@ -60,17 +60,13 @@ return [
             'report' => false,
         ],
 
-        // 'cloudinary' => [
-        //     'driver' => 'cloudinary',
-        // ],
-        'cloudinary' => [
-            'driver' => 'cloudinary',
-            'key' => env('CLOUDINARY_KEY'),
-            'secret' => env('CLOUDINARY_SECRET'),
-            'cloud' => env('CLOUDINARY_CLOUD_NAME'),
-            'url' => env('CLOUDINARY_URL'),
-            'secure' => (bool) env('CLOUDINARY_SECURE', true),
-            'prefix' => env('CLOUDINARY_PREFIX'),
+        /*
+         * Cloudflare Images (see App\Filesystem\CloudflareImagesAdapter). A path
+         * is the image's id, so what a form saves is what the site serves.
+         */
+        'cloudflare' => [
+            'driver' => 'cloudflare-images',
+            'throw' => true,
         ],
 
     ],

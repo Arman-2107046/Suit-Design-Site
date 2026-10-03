@@ -28,8 +28,6 @@ class ListBodyTypes extends ListRecords
                 ->modalSubmitAction(false)
                 ->modalCancelActionLabel('Close')
                 ->modalContent(fn () => view('filament.modals.bulk-upload-images', [
-                    'cloudName' => $this->getCloudinaryCloudName(),
-                    'uploadPreset' => env('CLOUDINARY_UPLOAD_PRESET', ''),
                     'title' => 'Upload Body Type Images',
                     'subtitle' => 'Drag & drop images here, or click to browse',
                     'filenameHint' => 'Name_Code.png',
@@ -98,20 +96,5 @@ class ListBodyTypes extends ListRecords
             ->success(count($failed) === 0)
             ->warning(count($failed) > 0)
             ->send();
-    }
-
-    private function getCloudinaryCloudName(): string
-    {
-        $cloud = env('CLOUDINARY_CLOUD_NAME', '');
-
-        if (empty($cloud)) {
-            $cloudinaryUrl = env('CLOUDINARY_URL');
-
-            if ($cloudinaryUrl) {
-                $cloud = parse_url($cloudinaryUrl, PHP_URL_HOST) ?? '';
-            }
-        }
-
-        return $cloud;
     }
 }

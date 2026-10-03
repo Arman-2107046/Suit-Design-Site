@@ -25,47 +25,8 @@ class BulkUpload extends Page
      * a batch has to keep running after the admin navigates away, and by the
      * time the last file lands this component no longer exists.
      *
-     * See App\Http\Controllers\Admin\BulkUploadProcessController.
+     * Files go from the browser straight to Cloudflare Images; see
+     * App\Http\Controllers\Admin\BulkUploadProcessController and
+     * App\Http\Controllers\Admin\CloudflareUploadController.
      */
-
-
-    public function getCloudinaryCloudName(): string
-    {
-        $cloud = env('CLOUDINARY_CLOUD_NAME', '');
-
-
-
-        if (! empty($cloud)) {
-            return $cloud;
-        }
-
-
-
-        $url = env('CLOUDINARY_URL');
-
-
-
-        if ($url) {
-
-            return parse_url(
-                $url,
-                PHP_URL_HOST
-            ) ?? '';
-
-        }
-
-
-
-        return '';
-    }
-
-
-
-    public function getCloudinaryUploadPreset(): string
-    {
-        return env(
-            'CLOUDINARY_UPLOAD_PRESET',
-            ''
-        );
-    }
 }

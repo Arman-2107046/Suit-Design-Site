@@ -21,9 +21,6 @@
 
 
         @include('filament.modals.bulk-upload-images', [
-        'cloudName' => $this->getCloudinaryCloudName(),
-        'uploadPreset' => $this->getCloudinaryUploadPreset(),
-
         'title' => 'Upload All Images',
 
         'subtitle' => 'Drag & drop images here, or click to browse',

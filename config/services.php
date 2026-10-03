@@ -35,4 +35,15 @@ return [
         ],
     ],
 
+    /*
+    | Every image and the homepage video. Images are served from
+    | imagedelivery.net/<images_hash>/<id>/<variant>; the hash is not secret —
+    | it is part of every public image URL — and differs from the account id.
+    */
+    'cloudflare' => [
+        'account_id' => env('CLOUDFLARE_ACCOUNT_ID'),
+        'api_token' => env('CLOUDFLARE_API_TOKEN'),
+        'images_hash' => env('CLOUDFLARE_IMAGES_HASH'),
+    ],
+
 ];

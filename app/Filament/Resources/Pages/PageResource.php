@@ -48,7 +48,7 @@ class PageResource extends Resource
                 TextInput::make('slug')->required()->maxLength(80)->unique(ignoreRecord: true)->prefix('/p/')->helperText('Lowercase letters, numbers and dashes.'),
                 TextInput::make('subtitle')->maxLength(255)->columnSpan(2),
                 Toggle::make('is_published')->label('Published')->default(true)->inline(false),
-                FileUpload::make('hero_image')->label('Hero photo')->disk('cloudinary')->directory('pages')->image()->imageEditor()->maxSize(10240)->fetchFileInformation(false)
+                FileUpload::make('hero_image')->label('Hero photo')->disk('cloudflare')->directory('pages')->image()->imageEditor()->maxSize(10240)->fetchFileInformation(false)
                     ->helperText('Optional. Wide photo shown above the text.')->columnSpanFull(),
             ]),
             Section::make('Body')->components([
