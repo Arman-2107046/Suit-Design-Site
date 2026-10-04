@@ -3,6 +3,7 @@
 namespace App\Services\Cloudflare;
 
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -191,7 +192,8 @@ class CloudflareImages
     /** Rate limits and Cloudflare's own hiccups are worth a second try; a bad request is not. */
     private function worthRetrying($exception): bool
     {
-        $status = $exception->response?->status();
+        /* A dropped connection has no response at all, and is worth retrying too. */
+        $status = $exception instanceof RequestException ? $exception->response->status() : null;
 
         return $status === null || $status === 429 || $status >= 500;
     }

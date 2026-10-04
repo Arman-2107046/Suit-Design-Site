@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Commands\Concerns\ScansContentColumns;
 use App\Http\Controllers\Api\SuitConfiguratorController;
 use App\Services\Cloudflare\CloudflareImages;
 use App\Services\Cloudflare\CloudflareStream;
@@ -24,14 +25,13 @@ use Throwable;
  */
 class MoveMediaToCloudflare extends Command
 {
+    use ScansContentColumns;
+
     protected $signature = 'media:move-to-cloudflare
         {--execute : Copy and rewrite for real; without it nothing changes}
         {--limit=0 : Copy at most this many images, for a trial run}';
 
     protected $description = 'Copy every Cloudinary image and video to Cloudflare and rewrite the addresses';
-
-    /** Tables that hold framework state rather than content. */
-    private const SKIP_TABLES = ['cache', 'cache_locks', 'sessions', 'jobs', 'job_batches', 'failed_jobs', 'migrations', 'password_reset_tokens'];
 
     private const CLOUDINARY = '~https?://res\.cloudinary\.com/[A-Za-z0-9_-]+/(image|video)/upload/(?:[a-z]_[^/]+/)*v\d+/([^\s"\'<>)\\\\?#]+)~';
 
@@ -261,19 +261,6 @@ class MoveMediaToCloudflare extends Command
         }
 
         return $rewritten;
-    }
-
-    /** @return array<int, array{0: string, 1: string}> */
-    private function textColumns(): array
-    {
-        return collect(Schema::getTables())
-            ->pluck('name')
-            ->reject(fn ($table) => in_array($table, self::SKIP_TABLES, true))
-            ->flatMap(fn ($table) => collect(Schema::getColumns($table))
-                ->filter(fn ($column) => preg_match('/char|text|json/i', $column['type_name']))
-                ->map(fn ($column) => [$table, $column['name']]))
-            ->values()
-            ->all();
     }
 
     private function mapPath(): string

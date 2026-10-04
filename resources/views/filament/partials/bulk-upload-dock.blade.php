@@ -62,6 +62,99 @@
             return /<svg[\s>]/i.test(text);
         }
 
+        /*
+         * Renders exported from Adobe RGB documents without their profile look
+         * washed out beside sRGB ones. Such a file gets the profile attached
+         * before it leaves the browser — the bytes come ready-made from
+         * App\Support\ColorProfile, which explains it and does the same on the
+         * server. No pixel changes; anything else goes up untouched.
+         */
+        const decode64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+        const ICC_PNG_CHUNK = decode64(@js(base64_encode(\App\Support\ColorProfile::pngChunk())));
+        const ICC_JPEG_SEGMENT = decode64(@js(base64_encode(\App\Support\ColorProfile::jpegSegment())));
+
+        function byteString(bytes) {
+            let s = '';
+            for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+            return s;
+        }
+
+        /* Photoshop's "uncalibrated" colour space (65535), in XMP or binary EXIF of either byte order. */
+        function markedUncalibrated(meta) {
+            return /exif:ColorSpace(?:="|>)65535/.test(meta)
+                || meta.includes('\xA0\x01\x00\x03\x00\x00\x00\x01\xFF\xFF')
+                || meta.includes('\x01\xA0\x03\x00\x01\x00\x00\x00\xFF\xFF');
+        }
+
+        function pngWithProfile(file, bytes) {
+            const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+            const parts = [];
+            let meta = '';
+            let kept = 0;
+
+            for (let at = 8; at + 12 <= bytes.length;) {
+                const length = view.getUint32(at);
+                const type = byteString(bytes.subarray(at + 4, at + 8));
+                const end = at + 12 + length;
+
+                if (at === 8 && type !== 'IHDR') return null;
+                if (type === 'iCCP' || type === 'sRGB') return null;
+                if (['iTXt', 'tEXt', 'zTXt', 'eXIf'].includes(type)) meta += byteString(bytes.subarray(at + 8, at + 8 + length));
+
+                if (type === 'IHDR') {
+                    parts.push(file.slice(0, end), ICC_PNG_CHUNK);
+                    kept = end;
+                } else if (type === 'gAMA' || type === 'cHRM') {
+                    /* With a profile present these would only contradict it. */
+                    parts.push(file.slice(kept, at));
+                    kept = end;
+                }
+
+                if (type === 'IEND') break;
+                at = end;
+            }
+
+            if (!parts.length || !markedUncalibrated(meta)) return null;
+
+            parts.push(file.slice(kept));
+            return parts;
+        }
+
+        function jpegWithProfile(file, bytes) {
+            const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+            let meta = '';
+            let insertAt = 2;
+
+            for (let at = 2; at + 4 <= bytes.length && bytes[at] === 0xff;) {
+                const marker = bytes[at + 1];
+                if (marker === 0xda) break; /* start of scan: the headers are over */
+
+                const length = view.getUint16(at + 2);
+                const segment = bytes.subarray(at + 4, at + 2 + length);
+
+                if (marker === 0xe2 && byteString(segment.subarray(0, 12)) === 'ICC_PROFILE\0') return null;
+                if (marker === 0xe1) meta += byteString(segment);
+                /* JFIF and EXIF have to stay first; the profile goes straight after them. */
+                if (marker === 0xe0 || marker === 0xe1) insertAt = at + 2 + length;
+
+                at += 2 + length;
+            }
+
+            if (!markedUncalibrated(meta)) return null;
+
+            return [file.slice(0, insertAt), ICC_JPEG_SEGMENT, file.slice(insertAt)];
+        }
+
+        async function withColorProfile(file) {
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            const at = (offset, ...expected) => expected.every((b, i) => bytes[offset + i] === b);
+
+            const parts = at(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a) ? pngWithProfile(file, bytes)
+                : at(0, 0xff, 0xd8) ? jpegWithProfile(file, bytes)
+                : null;
+
+            return parts ? new File(parts, file.name, { type: file.type }) : file;
+        }
 
         const store = {
             stage: 'idle', /* idle | checking | uploading | filing | done */
@@ -348,6 +441,9 @@
             },
 
             async uploadOne(f) {
+                /* A file that cannot be read for this goes up as it is; the upload reports the real problem. */
+                const body = await withColorProfile(f.file).catch(() => f.file);
+
                 for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
                     if (this.cancelRequested) return this.backToPending(f);
 
@@ -358,7 +454,7 @@
 
                     try {
                         const target = await this.mintUploadUrl();
-                        f.url = await this.postFile(f, target.uploadURL);
+                        f.url = await this.postFile(f, body, target.uploadURL);
                         this.advance(f, f.size);
                         f.status = 'uploaded';
                         f.reason = null;
@@ -422,10 +518,10 @@
                 );
             },
 
-            postFile(f, uploadURL) {
+            postFile(f, body, uploadURL) {
                 return new Promise((resolve, reject) => {
                     const form = new FormData();
-                    form.append('file', f.file);
+                    form.append('file', body);
 
                     const xhr = new XMLHttpRequest();
                     xhr.open('POST', uploadURL);

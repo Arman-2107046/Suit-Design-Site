@@ -3,6 +3,7 @@
 namespace App\Filesystem;
 
 use App\Services\Cloudflare\CloudflareImages;
+use App\Support\ColorProfile;
 use League\Flysystem\Config;
 use League\Flysystem\FileAttributes;
 use League\Flysystem\FilesystemAdapter;
@@ -174,7 +175,9 @@ class CloudflareImagesAdapter implements FilesystemAdapter
                 $this->images->delete($path);
             }
 
-            $this->images->upload($contents, $path);
+            $bytes = is_resource($contents) ? stream_get_contents($contents) : $contents;
+
+            $this->images->upload(ColorProfile::tagAdobeRgb($bytes), $path);
         } catch (Throwable $e) {
             throw UnableToWriteFile::atLocation($path, $e->getMessage(), $e);
         }
