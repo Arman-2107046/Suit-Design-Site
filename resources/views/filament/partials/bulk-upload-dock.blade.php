@@ -2,36 +2,89 @@
     A bulk upload outlives the page that started it.
 
     Everything about a running batch — the File objects, the progress, the
-    rejections — lives on window, not in the Alpine component, because the
-    admin can walk off to Fabrics halfway through. The panel runs in SPA mode,
-    so navigating swaps the body without unloading the document: the requests
-    in flight keep going, and this store keeps the numbers. The uploader page
+    failures — lives on window, not in an Alpine component, because the admin
+    can walk off to Fabrics halfway through. The panel runs in SPA mode, so
+    navigating swaps the body without unloading the document: requests in
+    flight keep going, and this store keeps the numbers. The uploader page
     re-attaches to it on arrival; the dock below reports from anywhere else.
+
+    A file goes: pending → uploading (→ retrying) → uploaded → filing → filed.
+    It can stop at error (Cloudflare never took it), rejected (the server would
+    not file it — usually its name) or unfiled (the server did not answer).
 --}}
 <script>
     window.bulkUploadQueue = window.bulkUploadQueue || (function () {
+        /* Cloudflare Images accepts these formats, up to 10 MB each. */
+        const MAX_BYTES = 10 * 1024 * 1024;
+        const EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'];
+        const SYSTEM_FILES = ['.ds_store', 'thumbs.db', 'desktop.ini'];
+
+        const CONCURRENCY = 4;      /* uploads in flight at once */
+        const ATTEMPTS = 3;         /* per file, for failures worth retrying */
+        const FILE_CHUNK = 50;      /* files per filing request */
+        const VISIBLE_ROWS = 120;   /* the list never renders more than this */
+        const VISIBLE_FAILURES = 200;
+
+        const ACTIVE = ['uploading', 'retrying', 'filing'];
+        const FAILED = ['error', 'rejected', 'unfiled'];
+
+        let nextId = 1;
+
+        /* An error that knows whether trying again could help. */
+        function failure(message, { retryable = false, fatal = false, cancelled = false } = {}) {
+            const e = new Error(message);
+            e.retryable = retryable;
+            e.fatal = fatal;
+            e.cancelled = cancelled;
+            return e;
+        }
+
+        function extensionOf(name) {
+            const dot = name.lastIndexOf('.');
+            return dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
+        }
+
+        /*
+         * Whether the file really is an image, judged by its first bytes rather
+         * than its name — a renamed PDF has a .png extension too.
+         */
+        async function looksLikeImage(file) {
+            const head = new Uint8Array(await file.slice(0, 1024).arrayBuffer());
+            const at = (offset, ...bytes) => bytes.every((b, i) => head[offset + i] === b);
+
+            if (at(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return true;   /* PNG  */
+            if (at(0, 0xff, 0xd8, 0xff)) return true;                                   /* JPEG */
+            if (at(0, 0x47, 0x49, 0x46, 0x38)) return true;                             /* GIF  */
+            if (at(0, 0x52, 0x49, 0x46, 0x46) && at(8, 0x57, 0x45, 0x42, 0x50)) return true; /* WebP */
+
+            /* SVG is text: an <svg> element near the top, after any XML preamble. */
+            const text = new TextDecoder('utf-8', { fatal: false }).decode(head);
+            return /<svg[\s>]/i.test(text);
+        }
+
+
         const store = {
-            stage: 'idle', /* idle | uploading | filing | done */
+            stage: 'idle', /* idle | checking | uploading | filing | done */
             files: [],
-            rejected: [],
+            skipped: [],
             summary: null,
+            notice: null,
+
             totalBytes: 0,
             loadedBytes: 0,
-            percent: 0,
-            etaText: '',
-            doneCount: 0,
-            okCount: 0,
-            failCount: 0,
+            batchSize: 0,
+            settled: 0,
+            fileTotal: 0,
+            fileDone: 0,
+
             celebrated: false,
             dockDismissed: false,
+            cancelRequested: false,
 
-            rate: 0,
-            lastLoaded: 0,
-            lastTime: 0,
-            etaTimer: null,
-            emitQueued: false,
-
+            inflight: new Set(),
             listeners: new Set(),
+            emitQueued: false,
+            wakeLock: null,
 
             subscribe(fn) {
                 this.listeners.add(fn);
@@ -48,72 +101,507 @@
                 }
             },
 
-            /* Progress events fire far faster than anything needs redrawing */
+            /*
+             * Upload progress fires dozens of times a second per file. With
+             * thousands of files queued, redrawing on each would freeze the
+             * page, so the view hears about it a few times a second at most.
+             */
             emitSoon() {
                 if (this.emitQueued) return;
                 this.emitQueued = true;
-                requestAnimationFrame(() => {
+                setTimeout(() => {
                     this.emitQueued = false;
                     this.emit();
-                });
+                }, 160);
             },
 
             get busy() {
+                return ['checking', 'uploading', 'filing'].includes(this.stage);
+            },
+
+            get uploading() {
                 return this.stage === 'uploading' || this.stage === 'filing';
             },
 
-            /* A plain copy for Alpine to render, so no File objects cross into reactive state */
+            /*
+             * A plain copy for Alpine to render. Counts cover every file; the
+             * rows are a window — what is moving, then what failed, then what
+             * waits — so a 4,000-file batch renders as lightly as a 40-file one.
+             */
             snapshot() {
+                const counts = { total: 0, pending: 0, active: 0, uploaded: 0, filed: 0, failed: 0 };
+                const buckets = { active: [], failed: [], pending: [], uploaded: [], filed: [] };
+
+                for (const f of this.files) {
+                    counts.total++;
+                    const bucket = ACTIVE.includes(f.status) ? 'active'
+                        : FAILED.includes(f.status) ? 'failed'
+                        : f.status === 'pending' ? 'pending'
+                        : f.status === 'uploaded' ? 'uploaded'
+                        : 'filed';
+                    counts[bucket]++;
+                    if (buckets[bucket].length < VISIBLE_ROWS) buckets[bucket].push(f);
+                }
+
+                const row = (f) => ({ id: f.id, name: f.name, size: f.size, loaded: f.loaded, status: f.status, reason: f.reason, attempts: f.attempts });
+                const rows = [...buckets.active, ...buckets.failed, ...buckets.pending, ...buckets.uploaded, ...buckets.filed]
+                    .slice(0, VISIBLE_ROWS)
+                    .map(row);
+
+                const failures = this.files
+                    .filter((f) => FAILED.includes(f.status))
+                    .slice(0, VISIBLE_FAILURES)
+                    .map((f) => ({ id: f.id, name: f.name, stage: f.status === 'error' ? 'Upload' : 'Filing', reason: f.reason }));
+
+                const filingPhase = this.stage === 'filing';
+
                 return {
                     stage: this.stage,
                     busy: this.busy,
-                    percent: this.percent,
-                    etaText: this.etaText,
-                    doneCount: this.doneCount,
-                    okCount: this.okCount,
-                    failCount: this.failCount,
+                    uploading: this.uploading,
+                    counts,
+                    rows,
+                    hiddenRows: Math.max(0, counts.total - rows.length),
+                    failures,
+                    hiddenFailures: Math.max(0, counts.failed - failures.length),
+                    skipped: this.skipped.slice(0, VISIBLE_FAILURES),
+                    skippedCount: this.skipped.length,
+                    phaseDone: filingPhase ? this.fileDone : this.settled,
+                    phaseTotal: filingPhase ? this.fileTotal : this.batchSize,
+                    percent: filingPhase
+                        ? (this.fileTotal ? (this.fileDone / this.fileTotal) * 100 : 100)
+                        : Math.min(100, (this.loadedBytes / Math.max(1, this.totalBytes)) * 100),
                     totalBytes: this.totalBytes,
                     loadedBytes: this.loadedBytes,
+                    okCount: counts.filed,
+                    failCount: counts.failed,
                     summary: this.summary,
+                    notice: this.notice,
                     celebrated: this.celebrated,
                     dockDismissed: this.dockDismissed,
-                    rejected: this.rejected.map(r => ({ ...r })),
-                    files: this.files.map(f => ({
-                        name: f.name,
-                        size: f.size,
-                        loaded: f.loaded,
-                        status: f.status,
-                        reason: f.reason,
-                    })),
+                    cancelRequested: this.cancelRequested,
                 };
             },
 
-            add(fileList) {
-                for (const file of fileList) {
-                    this.files.push({
-                        file: file,
-                        name: file.name,
-                        size: file.size || 0,
-                        loaded: 0,
-                        status: 'pending',
-                        url: null,
-                        reason: null,
+            /** Every file that did not make it, for the downloadable report. */
+            reportRows() {
+                return [
+                    ...this.files
+                        .filter((f) => FAILED.includes(f.status))
+                        .map((f) => ({ name: f.name, stage: f.status === 'error' ? 'Upload' : 'Filing', reason: f.reason || 'Unknown error' })),
+                    ...this.skipped.map((s) => ({ name: s.name, stage: 'Not uploaded', reason: s.reason })),
+                ];
+            },
+
+            /* ---------------------------------------------------------- */
+            /*  Intake: nothing reaches Cloudflare unless it is an image   */
+            /* ---------------------------------------------------------- */
+
+            /*
+             * fileList: a FileList or an array of File.
+             * options.prefixes: when given, the only names that can be filed;
+             * anything else is set aside before upload. (No double braces in
+             * here — Blade would read them as an echo.)
+             */
+            add(fileList, options = {}) {
+                /* Copied now: a file input hands over a live list that empties when it is reset. */
+                const incoming = Array.from(fileList || []);
+
+                /* One drop at a time, so two quick drops cannot both slip a duplicate past the check. */
+                this.intake = (this.intake || Promise.resolve())
+                    .then(() => this.addNow(incoming, options))
+                    .catch((e) => console.error('bulk upload intake failed', e));
+
+                return this.intake;
+            },
+
+            async addNow(incoming, options) {
+                if (this.uploading || incoming.length === 0) return;
+
+                const wasStage = this.stage;
+                this.stage = 'checking';
+                this.notice = null;
+                this.emit();
+
+                const known = new Set(this.files.map((f) => f.name.toLowerCase()));
+                const prefixes = options.prefixes ? new Set(options.prefixes) : null;
+
+                /* Reading the first bytes is quick, but not free; a few dozen at a time. */
+                for (let i = 0; i < incoming.length; i += 24) {
+                    const verdicts = await Promise.all(
+                        incoming.slice(i, i + 24).map((file) => this.inspect(file, prefixes))
+                    );
+
+                    incoming.slice(i, i + 24).forEach((file, n) => {
+                        /* Judged here, one by one, not in the parallel check above —
+                           otherwise two copies in the same drop would both pass. */
+                        const reason = verdicts[n]
+                            || (known.has(file.name.toLowerCase()) ? 'Already in the queue' : null);
+
+                        if (reason) {
+                            this.skipped.push({ name: file.name, reason });
+                            return;
+                        }
+
+                        known.add(file.name.toLowerCase());
+                        this.files.push({
+                            id: nextId++,
+                            file: file,
+                            name: file.name,
+                            size: file.size,
+                            loaded: 0,
+                            status: 'pending',
+                            url: null,
+                            reason: null,
+                            attempts: 0,
+                        });
                     });
+
+                    this.emitSoon();
                 }
+
+                this.stage = wasStage === 'done' ? 'done' : 'idle';
+                this.emit();
+            },
+
+            /** Why a file cannot go, or null when it can. */
+            async inspect(file, prefixes) {
+                const name = file.name;
+                const lower = name.toLowerCase();
+                const ext = extensionOf(name);
+
+                if (lower.startsWith('.') || SYSTEM_FILES.includes(lower)) return 'A system file, not an image';
+                if (!EXTENSIONS.includes(ext)) return ext ? `Not an image (.${ext})` : 'Not an image (no file extension)';
+                if (file.size === 0) return 'The file is empty';
+                if (file.size > MAX_BYTES) return `${this.formatBytes(file.size)} — Cloudflare takes up to 10 MB per image`;
+
+                /* Read exactly as the server reads it — case and all — or it would pass here and fail there. */
+                if (prefixes) {
+                    const prefix = name.replace(/\.[^.]*$/, '').split('_')[0];
+                    if (!prefixes.has(prefix)) return `No recognised prefix (${prefix}_), so it could not be filed`;
+                }
+
+                try {
+                    if (!(await looksLikeImage(file))) return `Named .${ext}, but the contents are not an image`;
+                } catch (e) {
+                    return 'The file could not be read';
+                }
+
+                return null;
+            },
+
+            /* ---------------------------------------------------------- */
+            /*  Upload: a few at a time, retried when it might help        */
+            /* ---------------------------------------------------------- */
+
+            async start(config) {
+                if (this.busy) return;
+
+                this.uploadEndpoint = config.uploadEndpoint;
+                this.finalize = config.finalize;
+                this.priorityOf = config.priorityOf || (() => 0);
+
+                const toUpload = this.files.filter((f) => f.status === 'pending');
+                const toFile = this.files.filter((f) => f.status === 'uploaded');
+                if (toUpload.length === 0 && toFile.length === 0) return;
+
+                this.cancelRequested = false;
+                this.notice = null;
+                this.summary = null;
+                this.celebrated = false;
+                this.dockDismissed = false;
+
+                this.batchSize = toUpload.length;
+                this.settled = 0;
+                this.totalBytes = Math.max(1, toUpload.reduce((n, f) => n + f.size, 0));
+                this.loadedBytes = 0;
+
+                this.holdWakeLock();
+
+                if (toUpload.length > 0) {
+                    this.stage = 'uploading';
+                    this.emit();
+
+                    const queue = toUpload.slice();
+                    const worker = async () => {
+                        while (queue.length && !this.cancelRequested) {
+                            await this.uploadOne(queue.shift());
+                            this.settled++;
+                            this.emitSoon();
+                        }
+                    };
+
+                    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, worker));
+                }
+
+                /* Whatever reached Cloudflare is filed, even after a stop. */
+                if (!this.notice) await this.fileUploaded();
+
+                this.stage = 'done';
+                this.cancelRequested = false;
+                this.releaseWakeLock();
+
+                /* Nothing filed means nothing to celebrate; the failure list tells it. */
+                if (!this.files.some((f) => f.status === 'filed')) this.celebrated = true;
+
+                this.emit();
+            },
+
+            async uploadOne(f) {
+                for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+                    if (this.cancelRequested) return this.backToPending(f);
+
+                    f.attempts = attempt;
+                    f.status = attempt === 1 ? 'uploading' : 'retrying';
+                    this.resetProgress(f);
+                    this.emitSoon();
+
+                    try {
+                        const target = await this.mintUploadUrl();
+                        f.url = await this.postFile(f, target.uploadURL);
+                        this.advance(f, f.size);
+                        f.status = 'uploaded';
+                        f.reason = null;
+                        return;
+                    } catch (e) {
+                        if (e.cancelled) return this.backToPending(f);
+
+                        if (e.fatal) {
+                            this.notice = e.message;
+                            this.cancelRequested = true;
+                        }
+
+                        if (e.fatal || !e.retryable || attempt === ATTEMPTS) {
+                            f.status = 'error';
+                            f.reason = attempt > 1 ? `${e.message} (after ${attempt} tries)` : e.message;
+                            this.resetProgress(f);
+                            return;
+                        }
+
+                        f.reason = e.message;
+                        f.status = 'retrying';
+                        this.emitSoon();
+
+                        /* Back off: 1.5 s, then 3 s, with a little jitter so retries do not land together. */
+                        await this.wait(1500 * 2 ** (attempt - 1) + Math.random() * 600);
+                    }
+                }
+            },
+
+            /*
+             * Cloudflare needs a one-time address per file, minted by the server
+             * so the API token never reaches the browser; the file then goes
+             * straight to Cloudflare without passing through PHP.
+             */
+            async mintUploadUrl() {
+                let res;
+
+                try {
+                    res = await fetch(this.uploadEndpoint, {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': this.csrf() },
+                    });
+                } catch (e) {
+                    throw failure('Could not reach the server', { retryable: true });
+                }
+
+                if (res.status === 419) {
+                    throw failure('Your admin session has expired. Reload the page, then add the remaining files again.', { fatal: true });
+                }
+                if (res.status === 401 || res.status === 403) {
+                    throw failure('You are no longer signed in to the admin. Sign in again, then add the remaining files.', { fatal: true });
+                }
+
+                const body = await res.json().catch(() => ({}));
+
+                if (res.ok && body.uploadURL) return body;
+
+                throw failure(
+                    body.message || `The server could not prepare an upload (HTTP ${res.status})`,
+                    { retryable: res.status === 429 || res.status >= 500 }
+                );
+            },
+
+            postFile(f, uploadURL) {
+                return new Promise((resolve, reject) => {
+                    const form = new FormData();
+                    form.append('file', f.file);
+
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('POST', uploadURL);
+                    xhr.timeout = 120000;
+                    this.inflight.add(xhr);
+
+                    const done = (fn) => (...args) => {
+                        this.inflight.delete(xhr);
+                        fn(...args);
+                    };
+
+                    /* Byte-level progress is the whole reason this is XHR and not fetch */
+                    xhr.upload.addEventListener('progress', (e) => {
+                        if (e.lengthComputable) this.advance(f, Math.min(e.loaded, f.size));
+                    });
+
+                    xhr.addEventListener('load', done(() => {
+                        const status = xhr.status;
+
+                        if (status >= 200 && status < 300) {
+                            let url = null;
+                            try {
+                                url = this.publicVariant(JSON.parse(xhr.responseText).result?.variants);
+                            } catch (e) {
+                                /* handled below */
+                            }
+
+                            return url
+                                ? resolve(url)
+                                : reject(failure('Cloudflare sent back a reply that could not be read', { retryable: true }));
+                        }
+
+                        reject(failure(this.cloudflareReason(xhr.responseText, status), {
+                            retryable: status === 408 || status === 429 || status >= 500,
+                        }));
+                    }));
+
+                    xhr.addEventListener('error', done(() => reject(failure('The connection to Cloudflare dropped', { retryable: true }))));
+                    xhr.addEventListener('timeout', done(() => reject(failure('Cloudflare took too long to answer', { retryable: true }))));
+                    xhr.addEventListener('abort', done(() => reject(failure('Stopped', { cancelled: true }))));
+
+                    xhr.send(form);
+                });
+            },
+
+            /** Stop starting new uploads and abandon the ones in flight; what has landed is still filed. */
+            stop() {
+                if (this.stage !== 'uploading') return;
+                this.cancelRequested = true;
+                for (const xhr of this.inflight) xhr.abort();
+                this.emit();
+            },
+
+            /* ---------------------------------------------------------- */
+            /*  Filing: in order, in chunks, each retried once             */
+            /* ---------------------------------------------------------- */
+
+            async fileUploaded() {
+                /* Parents first, so nothing arrives ahead of what it refers to — even across chunks. */
+                const ready = this.files
+                    .filter((f) => f.status === 'uploaded')
+                    .sort((a, b) => this.priorityOf(a.name) - this.priorityOf(b.name));
+
+                if (ready.length === 0) return;
+
+                this.stage = 'filing';
+                this.fileTotal = ready.length;
+                this.fileDone = 0;
+                this.emit();
+
+                const totals = { filed: 0, breakdown: {} };
+                let heard = false;
+
+                for (let i = 0; i < ready.length; i += FILE_CHUNK) {
+                    const chunk = ready.slice(i, i + FILE_CHUNK);
+                    chunk.forEach((f) => (f.status = 'filing'));
+                    this.emitSoon();
+
+                    let result;
+                    let error = null;
+
+                    for (let attempt = 1; attempt <= 2; attempt++) {
+                        try {
+                            result = await this.finalize(chunk.map((f) => ({ name: f.name, url: f.url })));
+                            error = null;
+                            break;
+                        } catch (e) {
+                            error = e;
+                            if (attempt < 2) await this.wait(2000);
+                        }
+                    }
+
+                    if (error) {
+                        chunk.forEach((f) => {
+                            f.status = 'unfiled';
+                            f.reason = 'Uploaded, but the server did not file it: ' + error.message;
+                        });
+                    } else {
+                        const refused = new Map((result?.rejected || []).map((r) => [r.file, r.reason]));
+
+                        chunk.forEach((f) => {
+                            if (refused.has(f.name)) {
+                                f.status = 'rejected';
+                                f.reason = refused.get(f.name);
+                            } else {
+                                f.status = 'filed';
+                                f.reason = null;
+                            }
+                        });
+
+                        /* Pages that report what they filed return a summary; the resource modals return nothing. */
+                        if (result) {
+                            heard = true;
+                            totals.filed += result.filed ?? 0;
+                            for (const [label, n] of Object.entries(result.breakdown || {})) {
+                                totals.breakdown[label] = (totals.breakdown[label] || 0) + n;
+                            }
+                        }
+                    }
+
+                    this.fileDone += chunk.length;
+                    this.emitSoon();
+                }
+
+                this.summary = heard ? totals : null;
+            },
+
+            /* ---------------------------------------------------------- */
+            /*  Housekeeping                                               */
+            /* ---------------------------------------------------------- */
+
+            /** Send back round whatever did not make it: uploads again, filing again. */
+            retryFailed() {
+                if (this.busy) return;
+
+                for (const f of this.files) {
+                    if (f.status === 'error') {
+                        f.status = 'pending';
+                        f.reason = null;
+                        f.loaded = 0;
+                    } else if (f.status === 'rejected' || f.status === 'unfiled') {
+                        /* Already on Cloudflare: only the filing is repeated. */
+                        f.status = 'uploaded';
+                        f.reason = null;
+                    }
+                }
+
+                this.notice = null;
+                this.emit();
+            },
+
+            remove(id) {
+                if (this.uploading) return;
+                this.files = this.files.filter((f) => f.id !== id);
                 this.emit();
             },
 
             clearQueue() {
                 if (this.busy) return;
                 this.files = [];
+                this.skipped = [];
+                this.notice = null;
                 this.stage = 'idle';
-                this.percent = 0;
-                this.doneCount = 0;
+                this.batchSize = this.settled = this.fileTotal = this.fileDone = 0;
+                this.totalBytes = this.loadedBytes = 0;
                 this.emit();
             },
 
-            clearRejects() {
-                this.rejected = [];
+            clearFailed() {
+                if (this.busy) return;
+                this.files = this.files.filter((f) => !FAILED.includes(f.status));
+                this.emit();
+            },
+
+            clearSkipped() {
+                this.skipped = [];
                 this.emit();
             },
 
@@ -127,226 +615,46 @@
                 this.emit();
             },
 
-            async start(config) {
-                if (this.busy) return;
-
-                const queue = this.files.filter(f => f.status !== 'done');
-                if (queue.length === 0) return;
-
-                this.uploadEndpoint = config.uploadEndpoint;
-                this.finalize = config.finalize;
-
-                this.stage = 'uploading';
-                this.rejected = [];
-                this.summary = null;
-                this.celebrated = false;
-                this.dockDismissed = false;
-                this.doneCount = this.files.length - queue.length;
-
-                this.totalBytes = Math.max(1, queue.reduce((n, f) => n + f.size, 0));
-                this.loadedBytes = 0;
-                this.percent = 0;
-                this.rate = 0;
-                this.lastLoaded = 0;
-                this.lastTime = performance.now();
-                this.etaText = 'estimating time left';
-                this.etaTimer = setInterval(() => this.tickEta(), 450);
-                this.emit();
-
-                for (const f of queue) {
-                    f.status = 'uploading';
-                    f.loaded = 0;
-                    f.reason = null;
-
-                    try {
-                        await this.sendToCloudflare(f);
-                        f.status = 'done';
-                    } catch (e) {
-                        f.status = 'error';
-                        f.reason = e.message;
-                        this.rejected.push({ name: f.name, stage: 'Upload', reason: e.message });
-
-                        /* A failed file still counts towards the bar, or it stalls short of the end */
-                        this.advance(f, f.size);
-                    }
-
-                    this.doneCount++;
-                    this.emit();
-                }
-
-                clearInterval(this.etaTimer);
-                this.etaText = '';
-                this.percent = 100;
-
-                const payload = this.files
-                    .filter(f => f.status === 'done')
-                    .map(f => ({ name: f.name, url: f.url }));
-
-                if (payload.length === 0) {
-                    /* Nothing reached Cloudflare, so the rejects list is the whole story */
-                    this.okCount = 0;
-                    this.failCount = this.rejected.length;
-                    this.stage = 'done';
-                    this.emit();
-                    return;
-                }
-
-                this.stage = 'filing';
-                this.emit();
-
-                try {
-                    this.summary = (await this.finalize(payload)) ?? null;
-                } catch (e) {
-                    for (const f of this.files.filter(f => f.status === 'done')) {
-                        this.rejected.push({ name: f.name, stage: 'Filing', reason: 'The server did not answer: ' + e.message });
-                    }
-                }
-
-                this.absorbFilingRejects();
-
-                this.okCount = this.summary?.filed ?? payload.length;
-                this.failCount = this.rejected.length;
-                this.stage = 'done';
-                this.emit();
+            backToPending(f) {
+                this.resetProgress(f);
+                f.status = 'pending';
+                f.reason = null;
             },
 
-            /*
-             * Cloudflare needs a one-time address per file, minted by the server
-             * so the API token never reaches the browser; the file then goes
-             * straight to Cloudflare without passing through PHP.
-             */
-            async sendToCloudflare(f) {
-                const target = await this.mintUploadUrl();
-                await this.postFile(f, target.uploadURL);
-            },
-
-            async mintUploadUrl() {
-                let res;
-
-                try {
-                    res = await fetch(this.uploadEndpoint, {
-                        method: 'POST',
-                        headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': this.csrf() },
-                    });
-                } catch (e) {
-                    throw new Error('Could not reach the server for an upload address');
-                }
-
-                const body = await res.json().catch(() => ({}));
-
-                if (!res.ok || !body.uploadURL) {
-                    throw new Error(body.message || 'The server could not get an upload address (HTTP ' + res.status + ')');
-                }
-
-                return body;
-            },
-
-            postFile(f, uploadURL) {
-                return new Promise((resolve, reject) => {
-                    const form = new FormData();
-                    form.append('file', f.file);
-
-                    const xhr = new XMLHttpRequest();
-                    xhr.open('POST', uploadURL);
-
-                    /* Byte-level progress is the whole reason this is XHR and not fetch */
-                    xhr.upload.addEventListener('progress', (e) => {
-                        if (e.lengthComputable) this.advance(f, e.loaded);
-                    });
-
-                    xhr.addEventListener('load', () => {
-                        if (xhr.status - 200 >= 100 || xhr.status - 200 < 0) {
-                            console.error('Cloudflare upload failed for', f.name, xhr.responseText);
-                            reject(new Error(this.cloudflareReason(xhr.responseText, xhr.status)));
-                            return;
-                        }
-
-                        this.advance(f, f.size);
-
-                        try {
-                            f.url = this.publicVariant(JSON.parse(xhr.responseText).result?.variants);
-                        } catch (e) {
-                            f.url = null;
-                        }
-
-                        if (!f.url) {
-                            reject(new Error('Cloudflare sent back a response we could not read'));
-                            return;
-                        }
-
-                        resolve();
-                    });
-
-                    xhr.addEventListener('error', () => reject(new Error('Network error while reaching Cloudflare')));
-                    xhr.addEventListener('timeout', () => reject(new Error('Cloudflare took too long to respond')));
-
-                    xhr.send(form);
-                });
-            },
-
-            /* The full-size address; the site asks for smaller sizes itself. */
-            publicVariant(variants) {
-                const list = variants || [];
-                return list.find((v) => v.endsWith('/public')) || list[0] || null;
+            resetProgress(f) {
+                this.loadedBytes = Math.max(0, this.loadedBytes - f.loaded);
+                f.loaded = 0;
             },
 
             advance(f, loaded) {
                 const capped = Math.min(loaded, f.size || loaded);
                 this.loadedBytes += Math.max(0, capped - f.loaded);
                 f.loaded = capped;
-                this.percent = Math.min(100, (this.loadedBytes / this.totalBytes) * 100);
                 this.emitSoon();
             },
 
-            /* Files that reached Cloudflare but the server would not file */
-            absorbFilingRejects() {
-                for (const row of this.summary?.rejected ?? []) {
-                    this.rejected.push({ name: row.file, stage: 'Filing', reason: row.reason });
-
-                    const match = this.files.find(f => f.name === row.file);
-                    if (match) {
-                        match.status = 'rejected';
-                        match.reason = row.reason;
-                    }
+            /* A long batch should not die because the laptop went to sleep. */
+            async holdWakeLock() {
+                try {
+                    this.wakeLock = await navigator.wakeLock?.request('screen');
+                } catch (e) {
+                    this.wakeLock = null;
                 }
             },
 
-            tickEta() {
-                const now = performance.now();
-                const deltaTime = now - this.lastTime;
-                const deltaBytes = this.loadedBytes - this.lastLoaded;
-
-                this.lastTime = now;
-                this.lastLoaded = this.loadedBytes;
-
-                if (deltaTime <= 0 || this.loadedBytes <= 0) return;
-
-                /* Smoothed, so one slow chunk does not throw the estimate around */
-                const instant = deltaBytes / deltaTime;
-                this.rate = this.rate ? this.rate * 0.75 + instant * 0.25 : instant;
-
-                if (this.rate <= 0) return;
-
-                this.etaText = this.formatDuration((this.totalBytes - this.loadedBytes) / this.rate);
-                this.emit();
+            releaseWakeLock() {
+                try {
+                    this.wakeLock?.release();
+                } catch (e) {
+                    /* already released */
+                }
+                this.wakeLock = null;
             },
 
-            formatDuration(ms) {
-                const seconds = Math.max(0, Math.round(ms / 1000));
-
-                if (seconds <= 2) return 'almost done';
-                if (seconds - 60 < 0) return 'about ' + seconds + 's left';
-
-                const minutes = Math.floor(seconds / 60);
-                const rest = seconds % 60;
-
-                return 'about ' + minutes + 'm ' + (rest ? rest + 's ' : '') + 'left';
-            },
-
-            formatBytes(n) {
-                if (!n) return '0 KB';
-                const mb = n / 1048576;
-                return mb - 1 >= 0 ? mb.toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+            /* The full-size address; the site asks for smaller sizes itself. */
+            publicVariant(variants) {
+                const list = variants || [];
+                return list.find((v) => v.endsWith('/public')) || list[0] || null;
             },
 
             cloudflareReason(body, status) {
@@ -356,7 +664,22 @@
                 } catch (e) {
                     /* not JSON, so fall through to the status code */
                 }
-                return 'Cloudflare refused the file (HTTP ' + status + ')';
+                return `Cloudflare refused the file (HTTP ${status})`;
+            },
+
+            wait(ms) {
+                return new Promise((resolve) => setTimeout(resolve, ms));
+            },
+
+            formatBytes(n) {
+                if (!n) return '0 KB';
+                if (n >= 1073741824) return (n / 1073741824).toFixed(2) + ' GB';
+                if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+                return Math.max(1, Math.round(n / 1024)) + ' KB';
+            },
+
+            formatCount(n) {
+                return Number(n || 0).toLocaleString();
             },
 
             csrf() {
@@ -366,7 +689,7 @@
 
         /* SPA navigation cannot interrupt a batch, but a reload or a closed tab can */
         window.addEventListener('beforeunload', (e) => {
-            if (!store.busy) return;
+            if (!store.uploading) return;
             e.preventDefault();
             e.returnValue = '';
         });
@@ -381,101 +704,38 @@
         right: 20px;
         bottom: 20px;
         z-index: 40;
-        width: 296px;
-        padding: 15px 17px 16px;
+        width: 300px;
+        padding: 14px 16px 15px;
         background: #fff;
-        border: 1px solid #e7e7f0;
-        border-radius: 16px;
-        box-shadow: 0 24px 50px -20px rgba(15, 15, 40, 0.4);
+        border: 1px solid #e8e8ee;
+        border-radius: 14px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 18px 40px -18px rgba(15, 23, 42, 0.28);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        animation: bud-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+        animation: bud-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
     }
     @keyframes bud-in {
-        from { opacity: 0; transform: translateY(14px) scale(0.97); }
+        from { opacity: 0; transform: translateY(12px); }
         to { opacity: 1; transform: none; }
     }
-    .bud-top {
-        display: flex;
-        align-items: center;
-        gap: 9px;
-        margin-bottom: 11px;
-    }
+    .bud-top { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
     .bud-spin {
-        width: 15px;
-        height: 15px;
-        flex-shrink: 0;
-        border: 2px solid #e0e0ea;
-        border-top-color: #6366f1;
-        border-radius: 50%;
+        width: 14px; height: 14px; flex-shrink: 0;
+        border: 2px solid #e5e7eb; border-top-color: #4f46e5; border-radius: 50%;
         animation: bud-spin 0.8s linear infinite;
     }
-    @keyframes bud-spin {
-        to { transform: rotate(360deg); }
-    }
-    .bud-tick {
-        width: 16px;
-        height: 16px;
-        flex-shrink: 0;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #818cf8, #6366f1);
-    }
-    .bud-title {
-        flex: 1;
-        min-width: 0;
-        margin: 0;
-        font-size: 12.5px;
-        font-weight: 600;
-        color: #111827;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .bud-pct {
-        font-size: 12.5px;
-        font-weight: 700;
-        color: #4338ca;
-        font-variant-numeric: tabular-nums;
-    }
-    .bud-x {
-        padding: 0 2px;
-        background: none;
-        border: 0;
-        font-size: 15px;
-        line-height: 1;
-        color: #c7c7d4;
-        cursor: pointer;
-    }
-    .bud-x:hover { color: #6b7280; }
-    .bud-bar {
-        height: 7px;
-        background: #ececf4;
-        border-radius: 999px;
-        overflow: hidden;
-    }
-    .bud-fill {
-        height: 100%;
-        border-radius: 999px;
-        background: linear-gradient(90deg, #a5b4fc, #6366f1);
-        transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .bud-meta {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        margin: 9px 0 0;
-        font-size: 10.5px;
-        color: #9ca3af;
-        font-variant-numeric: tabular-nums;
-    }
-    .bud-link {
-        font-size: 10.5px;
-        font-weight: 600;
-        color: #6366f1;
-        text-decoration: none;
-    }
+    @keyframes bud-spin { to { transform: rotate(360deg); } }
+    .bud-dot { width: 8px; height: 8px; flex-shrink: 0; margin: 0 3px; border-radius: 50%; background: #10b981; }
+    .bud-dot.warn { background: #f59e0b; }
+    .bud-title { flex: 1; min-width: 0; margin: 0; font-size: 12.5px; font-weight: 600; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bud-pct { font-size: 12px; font-weight: 600; color: #0f172a; font-variant-numeric: tabular-nums; }
+    .bud-x { padding: 0 2px; background: none; border: 0; font-size: 16px; line-height: 1; color: #9ca3af; cursor: pointer; }
+    .bud-x:hover { color: #374151; }
+    .bud-bar { height: 4px; background: #f1f1f4; border-radius: 999px; overflow: hidden; }
+    .bud-fill { height: 100%; border-radius: 999px; background: #4f46e5; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    .bud-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 9px 0 0; font-size: 11px; color: #6b7280; font-variant-numeric: tabular-nums; }
+    .bud-link { font-size: 11px; font-weight: 600; color: #4f46e5; text-decoration: none; }
     .bud-link:hover { text-decoration: underline; }
-    .bud-bad { color: #b91c1c; font-weight: 600; }
+    .bud-bad { color: #b45309; font-weight: 600; }
 
     @media (prefers-reduced-motion: reduce) {
         .bud { animation: none; }
@@ -494,8 +754,9 @@
         destroy() { this.off && this.off(); },
         get shown() {
             if (this.here || this.s.dockDismissed) return false;
-            return this.s.busy || this.s.stage === 'done';
+            return this.s.uploading || this.s.stage === 'done';
         },
+        n(v) { return window.bulkUploadQueue.formatCount(v); },
     }"
     x-show="shown"
     x-cloak
@@ -503,28 +764,26 @@
     style="display: none;"
 >
     <div class="bud-top">
-        <div class="bud-spin" x-show="s.busy"></div>
-        <div class="bud-tick" x-show="!s.busy"></div>
+        <div class="bud-spin" x-show="s.uploading"></div>
+        <div class="bud-dot" x-show="!s.uploading" x-bind:class="s.failCount > 0 ? 'warn' : ''"></div>
 
-        <p class="bud-title" x-text="s.stage === 'filing' ? 'Filing images…' : s.busy ? 'Uploading images' : 'Upload complete'"></p>
+        <p class="bud-title" x-text="s.stage === 'filing' ? 'Filing images' : s.uploading ? 'Uploading images' : 'Upload finished'"></p>
 
-        <span class="bud-pct" x-show="s.busy" x-text="Math.round(s.percent) + '%'"></span>
+        <span class="bud-pct" x-show="s.uploading" x-text="Math.round(s.percent) + '%'"></span>
 
-        <button type="button" class="bud-x" x-show="!s.busy" x-on:click="window.bulkUploadQueue.dismissDock()" title="Dismiss">&times;</button>
+        <button type="button" class="bud-x" x-show="!s.uploading" x-on:click="window.bulkUploadQueue.dismissDock()" title="Dismiss" aria-label="Dismiss">&times;</button>
     </div>
 
     <div class="bud-bar">
-        <div class="bud-fill" x-bind:style="'width: ' + s.percent + '%;'"></div>
+        <div class="bud-fill" x-bind:style="'width: ' + (s.uploading ? s.percent : 100) + '%;'"></div>
     </div>
 
     <div class="bud-meta">
-        <span x-show="s.busy" x-text="s.doneCount + ' of ' + s.files.length + (s.etaText ? ' · ' + s.etaText : '')"></span>
+        <span x-show="s.uploading" x-text="n(s.phaseDone) + ' of ' + n(s.phaseTotal) + ' files'"></span>
 
-        <span x-show="!s.busy">
-            <span x-text="s.okCount + ' filed'"></span>
-            <span x-show="s.failCount > 0" class="bud-bad">
-                · <span x-text="s.failCount"></span> rejected
-            </span>
+        <span x-show="!s.uploading">
+            <span x-text="n(s.okCount) + ' filed'"></span>
+            <span x-show="s.failCount > 0" class="bud-bad">· <span x-text="n(s.failCount)"></span> need attention</span>
         </span>
 
         <a class="bud-link" href="{{ route('filament.admin.pages.bulk-upload') }}" wire:navigate>Open</a>

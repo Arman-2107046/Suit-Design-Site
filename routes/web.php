@@ -57,7 +57,7 @@ Route::post('/journal/{post}/like', [JournalController::class, 'like'])->middlew
 Route::middleware('auth')->group(function () {
     /* One-time Cloudflare upload addresses, so the browser can upload without holding the API token. */
     Route::post('/admin/uploads/image', [CloudflareUploadController::class, 'image'])
-        ->middleware('throttle:600,1')
+        ->middleware('throttle:900,1')
         ->name('admin.uploads.image');
 
     Route::post('/admin/uploads/video', [CloudflareUploadController::class, 'video'])
@@ -70,7 +70,7 @@ Route::middleware('auth')->group(function () {
 
     /* Bulk upload runs outside Livewire so a batch survives the admin navigating away mid-upload. */
     Route::post('/admin/bulk-upload/process', BulkUploadProcessController::class)
-        ->middleware('throttle:60,1')
+        ->middleware('throttle:300,1')
         ->name('admin.bulk-upload.process');
 
     Route::post('/admin/bulk-upload/report', BulkUploadReportController::class)

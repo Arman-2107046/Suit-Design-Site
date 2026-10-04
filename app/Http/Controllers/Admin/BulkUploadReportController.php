@@ -19,9 +19,12 @@ class BulkUploadReportController extends Controller
      */
     public function __invoke(Request $request): Response
     {
+        /* A whole-catalogue batch can list thousands of rows, which dompdf takes a while over. */
+        set_time_limit(180);
+
         $data = $request->validate([
             'format' => ['nullable', 'in:pdf,csv'],
-            'rejected' => ['required', 'array', 'min:1', 'max:500'],
+            'rejected' => ['required', 'array', 'min:1', 'max:6000'],
             'rejected.*.name' => ['required', 'string', 'max:255'],
             'rejected.*.stage' => ['required', 'string', 'max:60'],
             'rejected.*.reason' => ['nullable', 'string', 'max:600'],

@@ -25,9 +25,9 @@
 
         'subtitle' => 'Drag & drop images here, or click to browse',
 
-        'filenameHint' => 'BD__SB1_Black.png',
-
         'processUrl' => route('admin.bulk-upload.process'),
+
+        'priority' => \App\Services\BulkUploadService::PRIORITY,
 
         'accept' => 'image/*',
 

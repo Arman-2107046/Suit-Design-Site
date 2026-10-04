@@ -24,75 +24,57 @@ use App\Services\BulkUpload\CustomLiningsUploader;
 
 class BulkUploadService
 {
+    /**
+     * The order files are filed in: everything a file refers to is filed
+     * before it, so a lapel never arrives ahead of its category and a fabric's
+     * pictures never arrive ahead of the fabric.
+     *
+     * The bulk uploader sorts by this too, before it splits a large batch into
+     * chunks — otherwise a dependency could land in a later request.
+     */
+    public const PRIORITY = [
+        'FAB' => 1,
+        'FPI' => 2,
+        'RL' => 2,
+        'FRL' => 2,
+
+        'LT' => 3,
+        'CF' => 4,
+        'CL' => 5,
+
+        'BT' => 6,
+        'BD' => 7,
+        'DL' => 8,
+
+        'BI' => 9,
+        'BB' => 10,
+
+        'SLT' => 11,
+        'SL' => 12,
+
+        'CPT' => 13,
+        'CP' => 14,
+
+        'SPT' => 15,
+        'SP' => 16,
+
+        'LPC' => 17,
+        'LPS' => 18,
+        'LP' => 19,
+    ];
+
+    /** Where a filename sorts; anything unrecognised goes last. */
+    public static function priorityOf(string $filename): int
+    {
+        $prefix = explode('_', pathinfo($filename, PATHINFO_FILENAME))[0];
+
+        return self::PRIORITY[$prefix] ?? 999;
+    }
+
     public function process(array $files): array
     {
-        /*
-        |--------------------------------------------------------------------------
-        | Upload dependency priority
-        |--------------------------------------------------------------------------
-        */
-
-        $priority = [
-
-            'FAB' => 1,
-            'FPI' => 1,
-            'RL' => 1,
-            'FRL' => 1,
-
-            'LT' => 2,
-
-            'CF' => 3,
-
-            'CL' => 4,
-
-            'BT' => 5,
-            'BD' => 6,
-
-            'DL' => 7,
-
-            'BI' => 8,
-            'BB' => 9,
-
-            'SLT' => 10,
-            'SL'  => 11,
-
-            'CPT' => 12,
-            'CP'  => 13,
-
-            'SPT' => 14,
-            'SP'  => 15,
-
-            'LPC' => 16,
-            'LPS' => 17,
-            'LP'  => 18,
-        ];
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | Sort uploaded files
-        |--------------------------------------------------------------------------
-        */
-
-        usort($files, function ($a, $b) use ($priority) {
-
-            $prefixA = explode(
-                '_',
-                pathinfo($a['name'], PATHINFO_FILENAME)
-            )[0];
-
-            $prefixB = explode(
-                '_',
-                pathinfo($b['name'], PATHINFO_FILENAME)
-            )[0];
-
-            return (
-                $priority[$prefixA] ?? 999
-            ) <=>
-            (
-                $priority[$prefixB] ?? 999
-            );
-        });
+        /* Parents before the things that point at them; see PRIORITY. */
+        usort($files, fn ($a, $b) => self::priorityOf($a['name']) <=> self::priorityOf($b['name']));
 
 
         /*

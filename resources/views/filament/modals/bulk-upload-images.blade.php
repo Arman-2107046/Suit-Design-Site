@@ -1,49 +1,138 @@
 <style>
-    .bfu-dropzone {
-        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    /*
+     * The uploader. One accent — indigo, used sparingly — on white, hairline
+     * borders and ink type; colour is kept for status, where it carries meaning.
+     */
+    .bx { display: flex; flex-direction: column; gap: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif; color: #0f172a; }
+    .bx * { box-sizing: border-box; }
+    .bx [x-cloak] { display: none !important; }
+
+    /* Drop zone */
+    .bx-drop {
+        display: flex; flex-direction: column; align-items: center; gap: 12px;
+        padding: 34px 24px 28px; text-align: center; cursor: pointer;
+        background: #fcfcfd; border: 1.5px dashed #d6d6de; border-radius: 16px;
+        transition: border-color 0.2s ease, background 0.2s ease, opacity 0.2s ease;
     }
-    .bfu-dropzone:hover {
-        border-color: #818cf8 !important;
-        background: linear-gradient(135deg, #f5f3ff 0%, #eef2ff 100%) !important;
+    .bx-drop:hover, .bx-drop.is-over { border-color: #4f46e5; background: #f8f8ff; }
+    .bx-drop.is-locked { opacity: 0.55; cursor: not-allowed; pointer-events: none; }
+    .bx-drop-icon {
+        display: flex; align-items: center; justify-content: center; width: 46px; height: 46px;
+        color: #4f46e5; background: #eef2ff; border-radius: 12px; transition: transform 0.2s ease;
     }
-    .bfu-icon-circle {
-        transition: transform 0.25s ease;
+    .bx-drop:hover .bx-drop-icon { transform: translateY(-2px); }
+    .bx-drop-title { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+    .bx-drop-sub { margin: 2px 0 0; font-size: 13px; color: #6b7280; }
+    .bx-drop-sub b { font-weight: 600; color: #4f46e5; }
+    .bx-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 4px; }
+    .bx-chip { font-size: 11px; font-weight: 500; color: #4b5563; background: #fff; border: 1px solid #e5e7eb; border-radius: 999px; padding: 4px 10px; }
+    .bx-chip.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; color: #4f46e5; }
+
+    /* Notices */
+    .bx-alert { display: flex; gap: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.45; color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; }
+    .bx-note { padding: 12px 14px; font-size: 13px; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; }
+    .bx-note-head { display: flex; align-items: center; gap: 10px; }
+    .bx-note-head strong { flex: 1; font-weight: 600; }
+    .bx-note-list { margin: 10px 0 0; padding: 0; list-style: none; max-height: 180px; overflow-y: auto; border-top: 1px solid #fde68a; }
+    .bx-note-list li { display: flex; gap: 10px; padding: 6px 0; font-size: 12px; border-bottom: 1px solid #fef3c7; }
+    .bx-note-list li span:first-child { flex: 0 1 45%; min-width: 0; font-weight: 600; color: #78350f; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bx-note-list li span:last-child { flex: 1; color: #92400e; }
+    .bx-link { padding: 0; font: inherit; font-size: 12px; font-weight: 600; color: inherit; background: none; border: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+    /* Stats */
+    .bx-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    @media (max-width: 640px) { .bx-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .bx-stat { padding: 12px 14px; background: #fff; border: 1px solid #ececf1; border-radius: 12px; }
+    .bx-stat-n { display: block; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .bx-stat-k { display: block; margin-top: 4px; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: #9ca3af; }
+    .bx-stat.good .bx-stat-n { color: #047857; }
+    .bx-stat.warn .bx-stat-n { color: #b45309; }
+
+    /* Progress */
+    .bx-progress { padding: 18px 20px 16px; background: #fff; border: 1px solid #ececf1; border-radius: 14px; animation: bx-rise 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+    .bx-progress-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+    .bx-progress-label { margin: 0; font-size: 13px; font-weight: 600; }
+    .bx-progress-meta { margin: 3px 0 0; font-size: 12px; color: #6b7280; font-variant-numeric: tabular-nums; }
+    .bx-pct { flex-shrink: 0; font-size: 32px; font-weight: 600; line-height: 0.9; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+    .bx-pct i { margin-left: 1px; font-size: 15px; font-style: normal; font-weight: 500; color: #9ca3af; }
+    .bx-bar { position: relative; height: 24px; overflow: hidden; background: #f1f1f5; border-radius: 999px; }
+    .bx-fill { position: relative; height: 100%; overflow: hidden; background: #4f46e5; border-radius: 999px; transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
+    .bx-fill.is-done { background: #10b981; }
+    .bx-fill.is-live::after {
+        content: ""; position: absolute; inset: 0;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+        transform: translateX(-100%); animation: bx-sheen 1.6s linear infinite;
     }
-    .bfu-dropzone:hover .bfu-icon-circle {
-        transform: scale(1.08);
+    .bx-progress-foot { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; font-size: 12px; color: #6b7280; }
+    .bx-spin { width: 13px; height: 13px; flex-shrink: 0; border: 2px solid #e5e7eb; border-top-color: #4f46e5; border-radius: 50%; animation: bx-spin 0.8s linear infinite; }
+
+    /* Actions */
+    .bx-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .bx-actions .bx-grow { flex: 1; }
+    .bx-btn {
+        display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 16px;
+        font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap;
+        border-radius: 10px; border: 1px solid transparent; cursor: pointer;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
     }
-    .bfu-btn-primary {
-        transition: all 0.2s ease;
-        box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
-    }
-    .bfu-btn-primary:hover:not(:disabled) {
-        box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
-        transform: translateY(-1px);
-    }
-    .bfu-btn-primary:active:not(:disabled) {
-        transform: translateY(0);
-    }
-    .bfu-btn-ghost {
-        transition: all 0.2s ease;
-    }
-    .bfu-btn-ghost:hover:not(:disabled) {
-        background: #f9fafb !important;
-        border-color: #9ca3af !important;
-    }
-    .bfu-row {
-        transition: all 0.2s ease;
-        animation: bfu-fade-in 0.3s ease;
-    }
-    @keyframes bfu-fade-in {
-        from { opacity: 0; transform: translateY(-4px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    .bfu-pulse {
-        animation: bfu-pulse 1.4s ease-in-out infinite;
-    }
-    @keyframes bfu-pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.5; }
+    .bx-btn:disabled { cursor: not-allowed; opacity: 0.5; }
+    .bx-btn-primary { color: #fff; background: #0f172a; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.18); }
+    .bx-btn-primary:hover:not(:disabled) { background: #1e293b; }
+    .bx-btn-ghost { color: #374151; background: #fff; border-color: #e5e7eb; }
+    .bx-btn-ghost:hover:not(:disabled) { border-color: #cbd5e1; background: #f9fafb; }
+    .bx-btn-warn { color: #92400e; background: #fffbeb; border-color: #fde68a; }
+    .bx-btn-warn:hover:not(:disabled) { background: #fef3c7; }
+    .bx-btn-stop { color: #b91c1c; background: #fff; border-color: #fecaca; }
+    .bx-btn-stop:hover:not(:disabled) { background: #fef2f2; }
+    .bx-btn-sm { height: 32px; padding: 0 12px; font-size: 12px; }
+
+    /* Lists */
+    .bx-grid { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
+    .bx-panel { flex: 1 1 380px; min-width: 0; overflow: hidden; background: #fff; border: 1px solid #ececf1; border-radius: 14px; }
+    .bx-panel.bx-side { flex: 1 1 280px; }
+    .bx-panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 14px; border-bottom: 1px solid #f1f1f4; }
+    .bx-panel-title { flex: 1; margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #6b7280; }
+    .bx-count { font-size: 11px; font-weight: 600; color: #374151; background: #f3f4f6; border-radius: 999px; padding: 2px 8px; font-variant-numeric: tabular-nums; }
+    .bx-count.warn { color: #92400e; background: #fef3c7; }
+    .bx-rows { max-height: 360px; overflow-y: auto; }
+    .bx-row { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #f6f6f8; animation: bx-fade 0.25s ease both; }
+    .bx-row:last-child { border-bottom: 0; }
+    .bx-ext { flex-shrink: 0; width: 38px; padding: 3px 0; font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; text-align: center; text-transform: uppercase; color: #6b7280; background: #f3f4f6; border-radius: 6px; }
+    .bx-name { flex: 1; min-width: 0; font-size: 13px; color: #1f2937; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bx-size { flex-shrink: 0; font-size: 11.5px; color: #9ca3af; font-variant-numeric: tabular-nums; }
+    .bx-remove { flex-shrink: 0; width: 22px; height: 22px; padding: 0; font-size: 15px; line-height: 1; color: #9ca3af; background: none; border: 0; border-radius: 6px; cursor: pointer; }
+    .bx-remove:hover { color: #b91c1c; background: #fef2f2; }
+    .bx-more { padding: 10px 14px; font-size: 12px; color: #9ca3af; text-align: center; background: #fcfcfd; }
+    .bx-empty { padding: 26px 14px; font-size: 13px; color: #9ca3af; text-align: center; }
+
+    /* Status pills */
+    .bx-pill { flex-shrink: 0; min-width: 74px; padding: 3px 9px; font-size: 11px; font-weight: 600; text-align: center; border-radius: 999px; font-variant-numeric: tabular-nums; }
+    .bx-pill.waiting  { color: #6b7280; background: #f3f4f6; }
+    .bx-pill.moving   { color: #4338ca; background: #eef2ff; }
+    .bx-pill.retrying { color: #b45309; background: #fef3c7; }
+    .bx-pill.landed   { color: #0369a1; background: #e0f2fe; }
+    .bx-pill.filed    { color: #047857; background: #d1fae5; }
+    .bx-pill.failed   { color: #b91c1c; background: #fee2e2; }
+    .bx-pill.refused  { color: #c2410c; background: #ffedd5; }
+
+    /* Failures */
+    .bx-fail { padding: 10px 14px; border-bottom: 1px solid #f6f6f8; }
+    .bx-fail:last-child { border-bottom: 0; }
+    .bx-fail-top { display: flex; align-items: center; gap: 8px; }
+    .bx-fail-name { flex: 1; min-width: 0; margin: 0; font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bx-fail-why { margin: 3px 0 0; font-size: 12px; line-height: 1.45; color: #6b7280; }
+    .bx-tag { flex-shrink: 0; font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; border-radius: 5px; padding: 2px 6px; color: #b91c1c; background: #fee2e2; }
+    .bx-tag.filing { color: #c2410c; background: #ffedd5; }
+
+    @keyframes bx-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    @keyframes bx-fade { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes bx-sheen { to { transform: translateX(100%); } }
+    @keyframes bx-spin { to { transform: rotate(360deg); } }
+
+    @media (prefers-reduced-motion: reduce) {
+        .bx-progress, .bx-row { animation: none; }
+        .bx-fill.is-live::after { animation: none; opacity: 0; }
+        .bx-spin { animation-duration: 2.4s; }
     }
 
     /* ── Completion overlay ──────────────────────────────────────────── */
@@ -250,273 +339,27 @@
         .bfu-halo, .bfu-spark, .bfu-card::after { display: none; }
         .bfu-check { stroke-dashoffset: 0; animation: none; }
     }
-    /* ── Progress stage ──────────────────────────────────────────────── */
-
-    .bfu-grid {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: flex-start;
-        gap: 16px;
-    }
-    .bfu-main {
-        flex: 1 1 360px;
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
-    }
-
-    .bfu-stage {
-        width: 100%;
-        padding: 20px 22px 18px;
-        background: linear-gradient(135deg, #fbfbff 0%, #f6f6fc 100%);
-        border: 1px solid #ececf4;
-        border-radius: 16px;
-        animation: bfu-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-    }
-    .bfu-stage-top {
-        display: flex;
-        align-items: flex-end;
-        justify-content: space-between;
-        gap: 16px;
-        margin-bottom: 12px;
-    }
-    .bfu-stage-label {
-        margin: 0;
-        font-size: 13px;
-        font-weight: 600;
-        color: #111827;
-    }
-    .bfu-stage-meta {
-        margin: 3px 0 0;
-        font-size: 11px;
-        color: #9ca3af;
-        font-variant-numeric: tabular-nums;
-    }
-    .bfu-pct {
-        flex-shrink: 0;
-        font-size: 34px;
-        font-weight: 600;
-        line-height: 0.9;
-        letter-spacing: -0.03em;
-        color: #4338ca;
-        font-variant-numeric: tabular-nums;
-    }
-    .bfu-pct i {
-        font-size: 16px;
-        font-style: normal;
-        font-weight: 500;
-        color: #a5b4fc;
-        margin-left: 1px;
-    }
-
-    .bfu-bar {
-        position: relative;
-        width: 100%;
-        height: 24px;
-        background: #ececf4;
-        border-radius: 999px;
-        overflow: hidden;
-        box-shadow: inset 0 1px 3px rgba(15, 15, 40, 0.09);
-    }
-    .bfu-bar-fill {
-        position: relative;
-        height: 100%;
-        border-radius: 999px;
-        overflow: hidden;
-        background: linear-gradient(90deg, #a5b4fc, #6366f1);
-        /* A highlight along the top edge keeps the thicker bar from reading as a flat slab */
-        box-shadow: 0 0 14px rgba(99, 102, 241, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.4);
-        transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    /* A highlight travels the filled section while bytes are actually moving */
-    .bfu-bar-live::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
-        transform: translateX(-100%);
-        animation: bfu-bar-sheen 1.4s linear infinite;
-    }
-    @keyframes bfu-bar-sheen {
-        to { transform: translateX(100%); }
-    }
-    .bfu-eta {
-        margin: 10px 0 0;
-        font-size: 11px;
-        font-weight: 500;
-        color: #6366f1;
-        font-variant-numeric: tabular-nums;
-    }
-
-    /* ── Rejected panel ──────────────────────────────────────────────── */
-
-    .bfu-rejects {
-        flex: 1 1 272px;
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        background: #fff;
-        border: 1px solid #fadcdc;
-        border-radius: 16px;
-        overflow: hidden;
-        box-shadow: 0 10px 30px -22px rgba(185, 28, 28, 0.55);
-        animation: bfu-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-    }
-    .bfu-rejects-head {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 13px 16px;
-        background: linear-gradient(135deg, #fef4f4 0%, #fdeeee 100%);
-        border-bottom: 1px solid #fadcdc;
-    }
-    .bfu-rejects-title {
-        flex: 1;
-        font-size: 12px;
-        font-weight: 600;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        color: #b91c1c;
-    }
-    .bfu-rejects-count {
-        font-size: 11px;
-        font-weight: 700;
-        color: #fff;
-        background: #dc2626;
-        border-radius: 999px;
-        padding: 2px 9px;
-    }
-    .bfu-rejects-clear {
-        padding: 3px 9px;
-        font-size: 10px;
-        font-weight: 600;
-        letter-spacing: 0.03em;
-        text-transform: uppercase;
-        color: #9a5757;
-        background: transparent;
-        border: 1px solid #f0cfcf;
-        border-radius: 999px;
-        cursor: pointer;
-        transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
-    }
-    .bfu-rejects-clear:hover {
-        color: #b91c1c;
-        border-color: #dc2626;
-        background: #fff;
-    }
-    .bfu-rejects-list {
-        max-height: 268px;
-        overflow-y: auto;
-    }
-    .bfu-reject {
-        padding: 11px 16px;
-        border-bottom: 1px solid #f7eaea;
-        animation: bfu-fade-in 0.3s ease both;
-    }
-    .bfu-reject:last-child { border-bottom: 0; }
-    .bfu-reject-name {
-        margin: 0;
-        font-size: 12px;
-        font-weight: 600;
-        color: #111827;
-        word-break: break-all;
-    }
-    .bfu-reject-reason {
-        margin: 3px 0 0;
-        font-size: 11px;
-        line-height: 1.45;
-        color: #6b7280;
-    }
-    .bfu-reject-stage {
-        display: inline-block;
-        margin-top: 6px;
-        font-size: 9px;
-        font-weight: 700;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: #b91c1c;
-        background: #fee2e2;
-        border-radius: 5px;
-        padding: 2px 6px;
-    }
-    .bfu-reject-stage.filing {
-        color: #c2410c;
-        background: #ffedd5;
-    }
-    .bfu-pdf-row {
-        display: flex;
-        gap: 8px;
-        margin: 12px 16px 16px;
-    }
-    .bfu-pdf {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 7px;
-        padding: 10px 12px;
-        font-size: 12px;
-        font-weight: 600;
-        color: #b91c1c;
-        background: #fff;
-        border: 1px solid #f3c9c9;
-        border-radius: 10px;
-        cursor: pointer;
-        transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
-    }
-    .bfu-pdf:hover:not(:disabled) {
-        background: #fef4f4;
-        border-color: #e9a8a8;
-        transform: translateY(-1px);
-    }
-    .bfu-pdf:disabled { opacity: 0.6; cursor: wait; }
-
-    .bfu-overlay-reports {
-        display: flex;
-        gap: 8px;
-        margin-top: 10px;
-    }
-    .bfu-overlay-pdf {
-        flex: 1;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 7px;
-        padding: 11px 14px;
-        font-size: 13px;
-        font-weight: 600;
-        color: #4b5563;
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        cursor: pointer;
-        transition: background 0.2s ease, border-color 0.2s ease;
-    }
-    .bfu-overlay-pdf:hover:not(:disabled) { background: #f9fafb; border-color: #d1d5db; }
-    .bfu-overlay-pdf:disabled { opacity: 0.6; cursor: wait; }
-
-    @media (prefers-reduced-motion: reduce) {
-        .bfu-stage, .bfu-rejects, .bfu-reject { animation: none; }
-        .bfu-bar-live::after { animation: none; opacity: 0; }
-    }
-
 </style>
 
 {{--
-    This is a view over window.bulkUploadQueue, not an owner of the batch. The
-    queue, the progress and the rejections live there so they survive the admin
-    navigating to another menu mid-upload; this component subscribes, renders a
-    snapshot, and hands clicks back.
+    A view over window.bulkUploadQueue, not the owner of the batch. The queue,
+    the progress and the failures live there so they survive the admin moving
+    to another menu mid-upload; this component subscribes, renders a snapshot,
+    and hands clicks back.
 --}}
 <div
+    class="bx"
     x-data="{
         uploadEndpoint: @js(route('admin.uploads.image')),
         wireMethod: @js($wireMethod ?? null),
         processUrl: @js($processUrl ?? null),
         reportUrl: @js(route('admin.bulk-upload.report')),
 
+        /* Only the unified page files by prefix; it hands over the order to file in. */
+        priority: @js($priority ?? null),
+
         dragging: false,
+        showSkipped: false,
         buildingReport: null,
         showSuccess: false,
         displayCount: 0,
@@ -546,39 +389,90 @@
             this.celebrate();
         },
 
+        n(v) { return window.bulkUploadQueue.formatCount(v); },
+        bytes(v) { return window.bulkUploadQueue.formatBytes(v); },
+        plural(count, one, many) { return count === 1 ? one : many; },
+        ext(name) { const i = name.lastIndexOf('.'); return i > 0 ? name.slice(i + 1, i + 5) : '—'; },
+
+        /* ---------- adding files ---------- */
+
+        pick() {
+            if (! this.s.uploading) this.$refs.input.click();
+        },
+
+        addFiles(list) {
+            window.bulkUploadQueue.add(list, { prefixes: this.priority ? Object.keys(this.priority) : null });
+        },
+
+        /* A dropped folder arrives as one entry; walk it for the files inside, however deep. */
         handleDrop(e) {
             this.dragging = false;
-            window.bulkUploadQueue.add(e.dataTransfer.files);
+            if (this.s.uploading) return;
+
+            const entries = Array.from(e.dataTransfer.items || [])
+                .map((item) => (item.webkitGetAsEntry ? item.webkitGetAsEntry() : null))
+                .filter(Boolean);
+
+            if (entries.length === 0) return this.addFiles(e.dataTransfer.files);
+
+            this.collect(entries).then((files) => this.addFiles(files));
         },
 
-        handleFiles(fileList) {
-            window.bulkUploadQueue.add(fileList);
+        async collect(entries) {
+            const files = [];
+
+            const walk = async (entry) => {
+                if (entry.isFile) {
+                    files.push(await new Promise((resolve, reject) => entry.file(resolve, reject)));
+                } else if (entry.isDirectory) {
+                    const reader = entry.createReader();
+                    for (;;) {
+                        const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+                        if (batch.length === 0) break;
+                        for (const child of batch) await walk(child);
+                    }
+                }
+            };
+
+            for (const entry of entries) {
+                try { await walk(entry); } catch (err) { console.error('could not read', entry.name, err); }
+            }
+
+            return files;
         },
 
-        clearQueue() {
-            window.bulkUploadQueue.clearQueue();
+        /* ---------- running ---------- */
+
+        priorityOf(name) {
+            if (! this.priority) return 0;
+            const prefix = name.replace(/\.[^.]*$/, '').split('_')[0];
+            return this.priority[prefix] ?? 999;
         },
 
-        clearRejects() {
-            window.bulkUploadQueue.clearRejects();
-        },
-
-        formatBytes(n) {
-            return window.bulkUploadQueue.formatBytes(n);
-        },
-
-        uploadAll() {
+        upload() {
             window.bulkUploadQueue.start({
                 uploadEndpoint: this.uploadEndpoint,
                 finalize: (payload) => this.file(payload),
+                priorityOf: (name) => this.priorityOf(name),
             });
         },
 
-        /* A route outlives this page; the resource modals have no route and stay on Livewire */
-        file(payload) {
-            if (!this.processUrl) return this.$wire.call(this.wireMethod, payload);
+        retry() {
+            window.bulkUploadQueue.retryFailed();
+            this.upload();
+        },
 
-            return fetch(this.processUrl, {
+        stop() { window.bulkUploadQueue.stop(); },
+        clearAll() { window.bulkUploadQueue.clearQueue(); },
+        clearFailed() { window.bulkUploadQueue.clearFailed(); },
+        clearSkipped() { window.bulkUploadQueue.clearSkipped(); this.showSkipped = false; },
+        remove(id) { window.bulkUploadQueue.remove(id); },
+
+        /* A route outlives this page; the resource modals have no route and stay on Livewire. */
+        async file(payload) {
+            if (! this.processUrl) return this.$wire.call(this.wireMethod, payload);
+
+            const res = await fetch(this.processUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -586,10 +480,14 @@
                     'X-CSRF-TOKEN': window.bulkUploadQueue.csrf(),
                 },
                 body: JSON.stringify({ files: payload }),
-            }).then((res) => {
-                if (!res.ok) throw new Error('the server returned HTTP ' + res.status);
-                return res.json();
             });
+
+            if (! res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.message || ('HTTP ' + res.status));
+            }
+
+            return res.json();
         },
 
         async downloadReport(format) {
@@ -604,18 +502,18 @@
                     },
                     body: JSON.stringify({
                         format: format,
-                        rejected: this.s.rejected,
-                        batch: { total: this.s.files.length, filed: this.s.okCount },
+                        rejected: window.bulkUploadQueue.reportRows(),
+                        batch: { total: this.s.counts.total + this.s.skippedCount, filed: this.s.okCount },
                     }),
                 });
 
-                if (!res.ok) throw new Error('the server returned HTTP ' + res.status);
+                if (! res.ok) throw new Error('the server returned HTTP ' + res.status);
 
                 const url = URL.createObjectURL(await res.blob());
                 const link = document.createElement('a');
 
                 link.href = url;
-                link.download = 'bulk-upload-rejected-' + new Date().toISOString().slice(0, 10) + '.' + format;
+                link.download = 'bulk-upload-report-' + new Date().toISOString().slice(0, 10) + '.' + format;
 
                 document.body.appendChild(link);
                 link.click();
@@ -650,212 +548,264 @@
             requestAnimationFrame(tick);
         },
 
+        /* ---------- what to show ---------- */
+
         get stageLabel() {
-            if (this.s.stage === 'uploading') return 'Uploading to Cloudflare';
-            if (this.s.stage === 'filing') return 'Filing images';
-            return 'Batch complete';
+            return {
+                checking: 'Checking files',
+                uploading: this.s.cancelRequested ? 'Stopping after the files in flight' : 'Uploading to Cloudflare',
+                filing: 'Filing into the catalogue',
+                done: 'Batch complete',
+            }[this.s.stage] || 'Ready';
+        },
+
+        get progressMeta() {
+            if (this.s.stage === 'filing') return this.n(this.s.phaseDone) + ' of ' + this.n(this.s.phaseTotal) + ' filed';
+            if (this.s.stage === 'uploading') {
+                return this.n(this.s.phaseDone) + ' of ' + this.n(this.s.phaseTotal) + ' files · '
+                    + this.bytes(this.s.loadedBytes) + ' of ' + this.bytes(this.s.totalBytes);
+            }
+            return this.n(this.s.okCount) + ' filed' + (this.s.failCount ? ' · ' + this.n(this.s.failCount) + ' need attention' : '');
+        },
+
+        get showProgress() {
+            return this.s.uploading || this.s.stage === 'done';
+        },
+
+        get primaryLabel() {
+            const waiting = this.s.counts.pending;
+            const landed = this.s.counts.uploaded;
+            if (waiting) return 'Upload ' + this.n(waiting) + ' ' + this.plural(waiting, 'file', 'files');
+            if (landed) return 'File ' + this.n(landed) + ' uploaded ' + this.plural(landed, 'image', 'images');
+            return 'Upload files';
+        },
+
+        get canStart() {
+            return ! this.s.busy && (this.s.counts.pending > 0 || this.s.counts.uploaded > 0);
         },
 
         get breakdown() {
             return Object.entries(this.s.summary?.breakdown ?? {});
         },
+
+        status(f) {
+            switch (f.status) {
+                case 'pending':   return ['waiting', 'Waiting'];
+                case 'uploading': return ['moving', Math.round((f.loaded / (f.size || 1)) * 100) + '%'];
+                case 'retrying':  return ['retrying', 'Retry ' + f.attempts + '/3'];
+                case 'uploaded':  return ['landed', 'Uploaded'];
+                case 'filing':    return ['moving', 'Filing'];
+                case 'filed':     return ['filed', 'Filed'];
+                case 'rejected':  return ['refused', 'Rejected'];
+                case 'unfiled':   return ['refused', 'Not filed'];
+                default:          return ['failed', 'Failed'];
+            }
+        },
     }"
-    style="display: flex; flex-direction: column; gap: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;"
 >
+    {{-- Drop zone --}}
     <div
-        class="bfu-dropzone"
-        x-on:dragover.prevent="dragging = true"
+        class="bx-drop"
+        x-bind:class="{ 'is-over': dragging, 'is-locked': s.uploading }"
+        x-on:click="pick()"
+        x-on:dragover.prevent="dragging = ! s.uploading"
         x-on:dragleave.prevent="dragging = false"
         x-on:drop.prevent="handleDrop($event)"
-        x-on:click="$refs.fileInput.click()"
-        x-bind:style="dragging
-            ? 'border: 2px dashed #6366f1; background: linear-gradient(135deg, #f5f3ff 0%, #eef2ff 100%); border-radius: 20px; padding: 40px 32px; text-align: center; cursor: pointer;'
-            : 'border: 2px dashed #e0e0ea; background: linear-gradient(135deg, #fafafa 0%, #f7f7fb 100%); border-radius: 20px; padding: 40px 32px; text-align: center; cursor: pointer;'"
+        role="button"
+        tabindex="0"
+        x-on:keydown.enter.prevent="pick()"
+        x-on:keydown.space.prevent="pick()"
+        aria-label="Add images to upload"
     >
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
-            <div
-                class="bfu-icon-circle"
-                style="width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3);"
-            >
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="17 8 12 3 7 8"></polyline>
-                    <line x1="12" y1="3" x2="12" y2="15"></line>
-                </svg>
-            </div>
+        <div class="bx-drop-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+        </div>
 
-            <div>
-                <h3 style="font-size: 16px; font-weight: 600; color: #111827; margin: 0;">{{ $title ?? 'Upload Images' }}</h3>
-                <p style="font-size: 13px; color: #6b7280; margin: 4px 0 0 0;">{{ $subtitle ?? 'Drag & drop images here, or click to browse' }}</p>
-            </div>
+        <div>
+            <p class="bx-drop-title">{{ $title ?? 'Upload images' }}</p>
+            <p class="bx-drop-sub">Drop files or a whole folder here, or <b>browse</b></p>
+        </div>
 
-            @if(!empty($filenameHint))
-                <div style="font-size: 11px; font-weight: 500; color: #6366f1; background: white; border: 1px solid #e0e0ea; border-radius: 999px; padding: 6px 14px; letter-spacing: 0.02em;">
-                    {{ $filenameHint }}
-                </div>
+        <div class="bx-chips">
+            <span class="bx-chip">PNG · JPG · WebP · GIF · SVG</span>
+            <span class="bx-chip">Up to 10 MB each</span>
+            @if (! empty($filenameHint))
+                <span class="bx-chip mono">{{ $filenameHint }}</span>
             @endif
         </div>
 
         <input
             type="file"
-            x-ref="fileInput"
+            x-ref="input"
             multiple
-            accept="{{ $accept ?? 'image/*' }}"
+            accept="{{ $accept ?? 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml' }}"
             style="display: none;"
-            x-on:change="handleFiles($event.target.files); $event.target.value = ''"
+            x-on:change="addFiles($event.target.files); $event.target.value = ''"
         >
     </div>
 
-    <div class="bfu-stage" x-show="s.busy || s.stage === 'done'" x-cloak style="display: none;">
-        <div class="bfu-stage-top">
-            <div style="min-width: 0;">
-                <p class="bfu-stage-label" x-text="stageLabel"></p>
-                <p class="bfu-stage-meta">
-                    <span x-text="s.doneCount"></span> of <span x-text="s.files.length"></span>
-                    <span x-text="s.files.length === 1 ? 'file' : 'files'"></span>
-                    <span x-show="s.totalBytes > 1">
-                        &middot;
-                        <span x-text="formatBytes(s.loadedBytes)"></span> of <span x-text="formatBytes(s.totalBytes)"></span>
-                    </span>
-                </p>
-            </div>
+    {{-- Something that stops the whole batch, such as an expired session --}}
+    <div class="bx-alert" x-show="s.notice" x-cloak style="display: none;" role="alert">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px;">
+            <circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <span x-text="s.notice"></span>
+    </div>
 
-            <div class="bfu-pct"><span x-text="Math.round(s.percent)"></span><i>%</i></div>
+    {{-- Files turned away before anything was uploaded --}}
+    <div class="bx-note" x-show="s.skippedCount > 0" x-cloak style="display: none;">
+        <div class="bx-note-head">
+            <strong x-text="n(s.skippedCount) + ' ' + plural(s.skippedCount, 'file was', 'files were') + ' set aside before uploading'"></strong>
+            <button type="button" class="bx-link" x-on:click="showSkipped = ! showSkipped" x-text="showSkipped ? 'Hide' : 'Show why'"></button>
+            <button type="button" class="bx-link" x-on:click="clearSkipped()">Dismiss</button>
+        </div>
+        <ul class="bx-note-list" x-show="showSkipped">
+            <template x-for="(item, i) in s.skipped" :key="i">
+                <li><span x-text="item.name"></span><span x-text="item.reason"></span></li>
+            </template>
+            <li x-show="s.skippedCount > s.skipped.length">
+                <span></span><span x-text="'and ' + n(s.skippedCount - s.skipped.length) + ' more — all listed in the report'"></span>
+            </li>
+        </ul>
+    </div>
+
+    {{-- At a glance --}}
+    <div class="bx-stats" x-show="s.counts.total > 0 || s.skippedCount > 0" x-cloak style="display: none;">
+        <div class="bx-stat">
+            <span class="bx-stat-n" x-text="n(s.counts.total)"></span>
+            <span class="bx-stat-k">Files</span>
+        </div>
+        <div class="bx-stat good">
+            <span class="bx-stat-n" x-text="n(s.counts.filed)"></span>
+            <span class="bx-stat-k">Filed</span>
+        </div>
+        <div class="bx-stat" x-bind:class="s.counts.failed ? 'warn' : ''">
+            <span class="bx-stat-n" x-text="n(s.counts.failed)"></span>
+            <span class="bx-stat-k">Need attention</span>
+        </div>
+        <div class="bx-stat" x-bind:class="s.skippedCount ? 'warn' : ''">
+            <span class="bx-stat-n" x-text="n(s.skippedCount)"></span>
+            <span class="bx-stat-k">Set aside</span>
+        </div>
+    </div>
+
+    {{-- Progress --}}
+    <div class="bx-progress" x-show="showProgress" x-cloak style="display: none;">
+        <div class="bx-progress-top">
+            <div style="min-width: 0;">
+                <p class="bx-progress-label" x-text="stageLabel"></p>
+                <p class="bx-progress-meta" x-text="progressMeta"></p>
+            </div>
+            <div class="bx-pct"><span x-text="s.uploading ? Math.round(s.percent) : 100"></span><i>%</i></div>
         </div>
 
-        <div class="bfu-bar">
+        <div class="bx-bar">
             <div
-                class="bfu-bar-fill"
-                x-bind:class="s.busy ? 'bfu-bar-live' : ''"
-                x-bind:style="'width: ' + s.percent + '%;'"
+                class="bx-fill"
+                x-bind:class="{ 'is-live': s.uploading, 'is-done': ! s.uploading }"
+                x-bind:style="'width: ' + (s.uploading ? s.percent : 100) + '%;'"
             ></div>
         </div>
 
-        <p class="bfu-eta" x-show="s.stage === 'uploading' && s.etaText" x-text="s.etaText"></p>
-        <p class="bfu-eta bfu-pulse" x-show="s.stage === 'filing'">Sorting them into the right tables…</p>
-        <p class="bfu-eta" x-show="s.busy">You can keep working — leaving this page will not stop the upload.</p>
+        <p class="bx-progress-foot" x-show="s.uploading">
+            <span class="bx-spin"></span>
+            <span>You can keep working — leaving this page will not stop the upload.</span>
+        </p>
     </div>
 
-    <div class="bfu-grid">
-        <div class="bfu-main">
-            <div x-show="s.files.length > 0" style="display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; padding-right: 2px;">
-                <template x-for="(f, index) in s.files" :key="index">
-                    <div
-                        class="bfu-row"
-                        style="display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; background: white; border: 1px solid #ececf2; border-radius: 10px; padding: 10px 14px;"
-                    >
-                        <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
-                                <rect x="3" y="3" width="18" height="18" rx="2"></rect>
-                                <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                                <polyline points="21 15 16 10 5 21"></polyline>
-                            </svg>
-                            <span x-text="f.name" style="color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
-                        </div>
+    <p class="bx-progress-foot" x-show="s.stage === 'checking'" x-cloak style="display: none; margin: 0;">
+        <span class="bx-spin"></span><span>Checking each file is a real image…</span>
+    </p>
 
-                        <span
-                            x-bind:class="f.status === 'uploading' ? 'bfu-pulse' : ''"
-                            x-text="f.status === 'pending' ? 'Pending'
-                                : f.status === 'uploading' ? Math.round((f.loaded / (f.size || 1)) * 100) + '%'
-                                : f.status === 'done' ? 'Done'
-                                : f.status === 'rejected' ? 'Rejected'
-                                : 'Error'"
-                            x-bind:style="{
-                                pending: 'flex-shrink: 0; font-size: 11px; font-weight: 600; color: #9ca3af; background: #f3f4f6; padding: 3px 10px; border-radius: 999px;',
-                                uploading: 'flex-shrink: 0; font-size: 11px; font-weight: 600; color: #6366f1; background: #eef2ff; padding: 3px 10px; border-radius: 999px; font-variant-numeric: tabular-nums;',
-                                done: 'flex-shrink: 0; font-size: 11px; font-weight: 600; color: #15803d; background: #dcfce7; padding: 3px 10px; border-radius: 999px;',
-                                rejected: 'flex-shrink: 0; font-size: 11px; font-weight: 600; color: #c2410c; background: #ffedd5; padding: 3px 10px; border-radius: 999px;',
-                                error: 'flex-shrink: 0; font-size: 11px; font-weight: 600; color: #dc2626; background: #fee2e2; padding: 3px 10px; border-radius: 999px;',
-                            }[f.status]"
-                        ></span>
-                    </div>
-                </template>
-            </div>
+    {{-- Actions --}}
+    <div class="bx-actions">
+        <button type="button" class="bx-btn bx-btn-primary" x-on:click="upload()" x-bind:disabled="! canStart" x-show="! s.uploading">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path></svg>
+            <span x-text="primaryLabel"></span>
+        </button>
 
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <button
-                    type="button"
-                    class="bfu-btn-primary"
-                    x-on:click="uploadAll()"
-                    x-bind:disabled="s.busy || s.files.length === 0"
-                    x-bind:style="(s.busy || s.files.length === 0)
-                        ? 'background: #c7c8f5; color: white; border: none; border-radius: 10px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: not-allowed; box-shadow: none;'
-                        : 'background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%); color: white; border: none; border-radius: 10px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer;'"
-                >
-                    <span x-show="!s.busy">Upload All</span>
-                    <span x-show="s.stage === 'uploading'">Uploading… <span x-text="s.doneCount"></span>/<span x-text="s.files.length"></span></span>
-                    <span x-show="s.stage === 'filing'" class="bfu-pulse">Filing images…</span>
+        <button type="button" class="bx-btn bx-btn-stop" x-on:click="stop()" x-show="s.stage === 'uploading'" x-bind:disabled="s.cancelRequested" x-cloak style="display: none;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"></rect></svg>
+            <span x-text="s.cancelRequested ? 'Stopping…' : 'Stop uploading'"></span>
+        </button>
+
+        <button type="button" class="bx-btn bx-btn-warn" x-on:click="retry()" x-show="! s.busy && s.counts.failed > 0" x-cloak style="display: none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+            <span x-text="'Retry ' + n(s.counts.failed) + ' failed'"></span>
+        </button>
+
+        <button type="button" class="bx-btn bx-btn-ghost" x-on:click="clearAll()" x-bind:disabled="s.busy" x-show="s.counts.total > 0 || s.skippedCount > 0" x-cloak style="display: none;">
+            Clear all
+        </button>
+
+        <span class="bx-grow"></span>
+
+        <template x-if="! s.busy && (s.counts.failed > 0 || s.skippedCount > 0)">
+            <div style="display: flex; gap: 6px;">
+                <button type="button" class="bx-btn bx-btn-ghost bx-btn-sm" x-on:click="downloadReport('pdf')" x-bind:disabled="buildingReport">
+                    <span x-text="buildingReport === 'pdf' ? 'Preparing…' : 'Report · PDF'"></span>
                 </button>
-
-                <button
-                    type="button"
-                    class="bfu-btn-ghost"
-                    x-on:click="clearQueue()"
-                    x-bind:disabled="s.busy"
-                    style="background: white; color: #374151; border: 1px solid #e0e0ea; border-radius: 10px; padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer;"
-                >
-                    Clear
-                </button>
-
-                <div x-show="s.stage === 'done' && !showSuccess" style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: #15803d;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                    </svg>
-                    <span>Done — you can close this now</span>
-                </div>
-            </div>
-        </div>
-
-        {{-- Rejections stay on screen after the overlay is dismissed, so they can be read and reported on --}}
-        <aside class="bfu-rejects" x-show="s.rejected.length > 0" x-cloak style="display: none;">
-            <div class="bfu-rejects-head">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b91c1c" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="15" y1="9" x2="9" y2="15"></line>
-                    <line x1="9" y1="9" x2="15" y2="15"></line>
-                </svg>
-                <span class="bfu-rejects-title">Rejected</span>
-                <span class="bfu-rejects-count" x-text="s.rejected.length"></span>
-
-                <button
-                    type="button"
-                    class="bfu-rejects-clear"
-                    title="Clear this list"
-                    x-on:click="clearRejects()"
-                >
-                    Clear
-                </button>
-            </div>
-
-            <div class="bfu-rejects-list">
-                <template x-for="(r, i) in s.rejected" :key="i">
-                    <div class="bfu-reject">
-                        <p class="bfu-reject-name" x-text="r.name"></p>
-                        <p class="bfu-reject-reason" x-text="r.reason"></p>
-                        <span class="bfu-reject-stage" x-bind:class="r.stage === 'Filing' ? 'filing' : ''" x-text="r.stage"></span>
-                    </div>
-                </template>
-            </div>
-
-            <div class="bfu-pdf-row">
-                <button type="button" class="bfu-pdf" x-on:click="downloadReport('pdf')" x-bind:disabled="buildingReport">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="7 10 12 15 17 10"></polyline>
-                        <line x1="12" y1="15" x2="12" y2="3"></line>
-                    </svg>
-                    <span x-text="buildingReport === 'pdf' ? 'Preparing…' : 'PDF'"></span>
-                </button>
-
-                <button type="button" class="bfu-pdf" x-on:click="downloadReport('csv')" x-bind:disabled="buildingReport">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="7 10 12 15 17 10"></polyline>
-                        <line x1="12" y1="15" x2="12" y2="3"></line>
-                    </svg>
+                <button type="button" class="bx-btn bx-btn-ghost bx-btn-sm" x-on:click="downloadReport('csv')" x-bind:disabled="buildingReport">
                     <span x-text="buildingReport === 'csv' ? 'Preparing…' : 'CSV'"></span>
                 </button>
             </div>
+        </template>
+    </div>
+
+    {{-- The queue, and what needs a second look --}}
+    <div class="bx-grid" x-show="s.counts.total > 0" x-cloak style="display: none;">
+        <section class="bx-panel">
+            <div class="bx-panel-head">
+                <h4 class="bx-panel-title">Files</h4>
+                <span class="bx-count" x-text="n(s.counts.total)"></span>
+            </div>
+
+            <div class="bx-rows">
+                <template x-for="f in s.rows" :key="f.id">
+                    <div class="bx-row">
+                        <span class="bx-ext" x-text="ext(f.name)"></span>
+                        <span class="bx-name" x-text="f.name" x-bind:title="f.name"></span>
+                        <span class="bx-size" x-text="bytes(f.size)"></span>
+                        <span class="bx-pill" x-bind:class="status(f)[0]" x-text="status(f)[1]" x-bind:title="f.reason || ''"></span>
+                        <button
+                            type="button"
+                            class="bx-remove"
+                            x-show="! s.uploading && ['pending', 'error'].includes(f.status)"
+                            x-on:click="remove(f.id)"
+                            title="Remove from the queue"
+                            aria-label="Remove from the queue"
+                        >&times;</button>
+                    </div>
+                </template>
+            </div>
+
+            <div class="bx-more" x-show="s.hiddenRows > 0" x-text="'+ ' + n(s.hiddenRows) + ' more ' + plural(s.hiddenRows, 'file', 'files') + ' — the numbers above count them all'"></div>
+        </section>
+
+        <aside class="bx-panel bx-side" x-show="s.counts.failed > 0" x-cloak style="display: none;">
+            <div class="bx-panel-head">
+                <h4 class="bx-panel-title">Need attention</h4>
+                <span class="bx-count warn" x-text="n(s.counts.failed)"></span>
+                <button type="button" class="bx-link" style="color: #6b7280; font-weight: 500;" x-on:click="clearFailed()" x-bind:disabled="s.busy" x-show="! s.busy">Remove</button>
+            </div>
+
+            <div class="bx-rows">
+                <template x-for="r in s.failures" :key="r.id">
+                    <div class="bx-fail">
+                        <div class="bx-fail-top">
+                            <p class="bx-fail-name" x-text="r.name" x-bind:title="r.name"></p>
+                            <span class="bx-tag" x-bind:class="r.stage === 'Filing' ? 'filing' : ''" x-text="r.stage"></span>
+                        </div>
+                        <p class="bx-fail-why" x-text="r.reason"></p>
+                    </div>
+                </template>
+            </div>
+
+            <div class="bx-more" x-show="s.hiddenFailures > 0" x-text="'+ ' + n(s.hiddenFailures) + ' more — every one is in the report'"></div>
         </aside>
     </div>
 
@@ -894,52 +844,31 @@
             <h2 class="bfu-title bfu-rise" style="animation-delay: 0.4s;">Completed</h2>
 
             <p class="bfu-sub bfu-rise" style="animation-delay: 0.48s;">
-                <span x-text="displayCount"></span>
-                <span x-text="s.okCount === 1 ? 'image' : 'images'"></span>
+                <span x-text="n(displayCount)"></span>
+                <span x-text="plural(s.okCount, 'image', 'images')"></span>
                 uploaded and filed
             </p>
 
             <div class="bfu-chips bfu-rise" x-show="breakdown.length" style="animation-delay: 0.56s;">
                 <template x-for="[label, count] in breakdown" :key="label">
-                    <span class="bfu-chip"><b x-text="count"></b> <span x-text="label"></span></span>
+                    <span class="bfu-chip"><b x-text="n(count)"></b> <span x-text="label"></span></span>
                 </template>
             </div>
 
             <p class="bfu-warn bfu-rise" x-show="s.failCount > 0" style="animation-delay: 0.6s;">
-                <span x-text="s.failCount"></span>
-                <span x-text="s.failCount === 1 ? 'file was' : 'files were'"></span> rejected
+                <span x-text="n(s.failCount)"></span>
+                <span x-text="plural(s.failCount, 'file needs', 'files need')"></span> attention
             </p>
 
             <button type="button" class="bfu-done bfu-rise" style="animation-delay: 0.66s;" x-on:click="showSuccess = false">
                 Done
             </button>
 
-            <div class="bfu-overlay-reports bfu-rise" style="animation-delay: 0.7s;" x-show="s.rejected.length > 0">
-                <button
-                    type="button"
-                    class="bfu-overlay-pdf"
-                    x-on:click="downloadReport('pdf')"
-                    x-bind:disabled="buildingReport"
-                >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="7 10 12 15 17 10"></polyline>
-                        <line x1="12" y1="15" x2="12" y2="3"></line>
-                    </svg>
+            <div class="bfu-overlay-reports bfu-rise" style="animation-delay: 0.7s;" x-show="s.failCount > 0 || s.skippedCount > 0">
+                <button type="button" class="bfu-overlay-pdf" x-on:click="downloadReport('pdf')" x-bind:disabled="buildingReport">
                     <span x-text="buildingReport === 'pdf' ? 'Preparing…' : 'PDF report'"></span>
                 </button>
-
-                <button
-                    type="button"
-                    class="bfu-overlay-pdf"
-                    x-on:click="downloadReport('csv')"
-                    x-bind:disabled="buildingReport"
-                >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="7 10 12 15 17 10"></polyline>
-                        <line x1="12" y1="15" x2="12" y2="3"></line>
-                    </svg>
+                <button type="button" class="bfu-overlay-pdf" x-on:click="downloadReport('csv')" x-bind:disabled="buildingReport">
                     <span x-text="buildingReport === 'csv' ? 'Preparing…' : 'CSV'"></span>
                 </button>
             </div>

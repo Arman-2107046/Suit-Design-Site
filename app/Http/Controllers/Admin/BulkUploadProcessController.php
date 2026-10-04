@@ -20,6 +20,9 @@ class BulkUploadProcessController extends Controller
      */
     public function __invoke(Request $request, BulkUploadService $service, BatchReport $report): JsonResponse
     {
+        /* The uploader sends chunks of 50, but a slow database should not cut one off at PHP's 30 s. */
+        set_time_limit(180);
+
         $data = $request->validate([
             'files' => ['required', 'array', 'min:1', 'max:500'],
             'files.*.name' => ['required', 'string', 'max:255'],
