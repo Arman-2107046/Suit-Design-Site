@@ -37,6 +37,11 @@ class Homepage extends Page
 
     public function mount(): void
     {
+        $this->fillFromDatabase();
+    }
+
+    private function fillFromDatabase(): void
+    {
         $settings = HomepageSetting::current();
         $data = $settings->attributesToArray();
 
@@ -107,7 +112,9 @@ class Homepage extends Page
             ->image()
             ->imageEditor()
             ->maxSize(10240)
-            ->fetchFileInformation(false);
+            ->fetchFileInformation(false)
+            ->hintAction($this->hardDeleteAction("delete_{$name}_image", 'Delete', fn () => $this->hardDeleteImage($name))
+                ->visible(fn (): bool => filled(HomepageSetting::current()->{"{$name}_image"})));
     }
 
     private function logoField(string $name, string $label): FileUpload
@@ -123,7 +130,64 @@ class Homepage extends Page
             ->panelLayout('grid')
             ->imagePreviewHeight('64')
             ->maxSize(2048)
-            ->fetchFileInformation(false);
+            ->fetchFileInformation(false)
+            ->hintAction($this->hardDeleteAction("delete_{$name}", 'Delete all', fn () => $this->hardDeleteLogos($name))
+                ->visible(fn (): bool => filled(HomepageSetting::current()->{$name})));
+    }
+
+    /*
+     * Hard delete: clears an image straight from the database, without going
+     * through the upload box. A file that no longer exists — such as one left
+     * on the disabled Cloudinary account — never finishes loading its preview,
+     * so the box sits on "Abort" and its own remove button never appears.
+     */
+    private function hardDeleteAction(string $name, string $label, \Closure $then): Action
+    {
+        return Action::make($name)
+            ->label($label)
+            ->icon('heroicon-m-trash')
+            ->color('danger')
+            ->requiresConfirmation()
+            ->modalHeading('Delete for good?')
+            ->modalDescription('This takes effect straight away, even if the image will not load. Save any other changes on this page first — the form reloads afterwards.')
+            ->modalSubmitActionLabel('Delete')
+            ->action($then);
+    }
+
+    private function hardDeleteImage(string $image): void
+    {
+        $settings = HomepageSetting::current();
+
+        $this->forget($settings->{"{$image}_image"});
+
+        $settings->update(["{$image}_image" => null, "{$image}_image_url" => null]);
+
+        $this->fillFromDatabase();
+
+        Notification::make()->title('Image deleted')->body('Upload a new one, then save.')->success()->send();
+    }
+
+    private function hardDeleteLogos(string $list): void
+    {
+        $settings = HomepageSetting::current();
+
+        foreach ($settings->{$list} ?? [] as $logo) {
+            $this->forget($logo['path'] ?? null);
+        }
+
+        $settings->update([$list => []]);
+
+        $this->fillFromDatabase();
+
+        Notification::make()->title('Logos deleted')->body('Upload new ones, then save.')->success()->send();
+    }
+
+    /* Remove the file too where it still exists; one already gone is no reason to stop. */
+    private function forget(?string $path): void
+    {
+        if (filled($path)) {
+            rescue(fn () => Storage::disk('cloudflare')->delete($path), report: false);
+        }
     }
 
     public function save(): void
