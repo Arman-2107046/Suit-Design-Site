@@ -4,7 +4,14 @@ import { addToCart, cartCount, summarizeDesign, useCart } from "@/lib/store";
 import { Loader2, Layers, Scissors, Palette, Menu, X, RotateCcw, Maximize2, ArrowLeft, ArrowRight, ShoppingBag, Check, Info, Images, Share2, Heart, ChevronLeft, ChevronRight, ChevronDown, Plus } from "lucide-react";
 import { resizeImage as optimizeUrl } from "@/lib/media";
 
-const STORAGE_KEY = "custom-tailor.design.v1";
+/*
+ * v2 saves only what the customer actually picked. v1 also saved whatever was
+ * on screen — including defaults nobody chose — which pinned every returning
+ * visitor to the defaults of their first visit. Those cannot be told apart
+ * from real picks, so v1 is set aside rather than read.
+ */
+const STORAGE_KEY = "custom-tailor.design.v2";
+const LEGACY_STORAGE_KEY = "custom-tailor.design.v1";
 const CANVAS_TIMEOUT_MS = 8000;
 
 /* ------------------------------------------------------------------ */
@@ -634,6 +641,7 @@ function optionUrlsFor(sel) {
 /* ------------------------------------------------------------------ */
 function loadSavedDesign() {
     try {
+        window.localStorage.removeItem(LEGACY_STORAGE_KEY);
         const raw = window.localStorage.getItem(STORAGE_KEY);
         if (!raw) return null;
         const parsed = JSON.parse(raw);
@@ -753,18 +761,20 @@ const hoverHandlers = (onHover) => (onHover ? { onMouseEnter: onHover, onFocus: 
  * over. `onInfo` opens the fabric overlay; tiles without it (linings) keep
  * the caption underneath.
  */
+/*
+ * A swatch as the card — fabrics and custom linings alike. The cloth runs edge
+ * to edge, its name (and price, for a fabric) sits underneath, and the chosen
+ * one names itself in script over a veil. "more info" appears only where there
+ * is more to tell, which is the fabrics.
+ */
 const FabricOptionTile = memo(function FabricOptionTile({ isSelected, onClick, onHover, onInfo, image, label, price, isNew = false, isLoading }) {
-    const overlay = Boolean(onInfo);
     return (
-        <div className={`${overlay ? fabricTileClass(isSelected) : tileClass(isSelected, "w-full")} group`} {...hoverHandlers(onHover)}>
-            {isSelected && !overlay && <SelectedBadge />}
+        <div className={`${fabricTileClass(isSelected)} group`} {...hoverHandlers(onHover)}>
             {isLoading && <TileSpinner />}
             <button type="button" onClick={onClick} aria-pressed={isSelected} aria-label={label} className="block w-full focus:outline-none">
                 <div
-                    className={`relative w-full flex items-center justify-center bg-[#efece6] overflow-hidden ${
-                        overlay
-                            ? `aspect-[40/27] rounded-lg ${isSelected ? "ring-1 ring-gray-900 ring-offset-2 ring-offset-white" : ""}`
-                            : "aspect-[4/3] rounded-md"
+                    className={`relative w-full aspect-[40/27] flex items-center justify-center bg-[#efece6] overflow-hidden rounded-lg ${
+                        isSelected ? "ring-1 ring-gray-900 ring-offset-2 ring-offset-white" : ""
                     }`}
                 >
                     <SwatchImage
@@ -773,39 +783,34 @@ const FabricOptionTile = memo(function FabricOptionTile({ isSelected, onClick, o
                         className="object-cover w-full h-full"
                         fallback={<div className="flex items-center justify-center w-full h-full text-xs text-gray-400">{label || "No image"}</div>}
                     />
-                    {overlay && isNew && (
+                    {isNew && (
                         <span className="absolute top-0 left-0 px-2 py-0.5 text-[9px] font-bold tracking-widest text-white uppercase bg-red-600 rounded-br-md">
                             New
                         </span>
                     )}
                 </div>
-                {overlay ? (
-                    <div className="flex items-baseline justify-between gap-2 mt-2">
-                        <span className="text-sm font-semibold leading-tight text-gray-900 truncate">{label}</span>
-                        {price != null && <span className="text-sm text-gray-700 shrink-0">${Math.round(Number(price))}</span>}
-                    </div>
-                ) : (
-                    <div className="mt-2">
-                        <div className="text-[11px] lg:text-xs font-medium leading-tight text-center text-gray-700 line-clamp-2 lg:line-clamp-none">{label}</div>
-                        {price && <div className="text-[11px] lg:text-xs text-center text-gray-500 mt-0.5">${price}</div>}
-                    </div>
-                )}
+                <div className="flex items-baseline justify-between gap-2 mt-2">
+                    <span className="text-sm font-semibold leading-tight text-gray-900 truncate">{label}</span>
+                    {price != null && <span className="text-sm text-gray-700 shrink-0">${Math.round(Number(price))}</span>}
+                </div>
             </button>
             {/*
              * The chosen cloth names itself: veil, script name and "more info" sit over
              * the swatch only while selected, which is also what a tap produces on touch,
              * where hover never fires.
              */}
-            {overlay && isSelected && (
+            {isSelected && (
                 <div className="absolute inset-x-0 top-0 aspect-[40/27] flex flex-col items-center justify-center gap-1 rounded-lg pointer-events-none bg-black/55 animate-fade-in">
                     <span className="px-2 text-center text-white font-script text-[26px] leading-none">{label}</span>
-                    <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); onInfo(); }}
-                        className="text-[11px] font-medium text-white/90 pointer-events-auto hover:text-white"
-                    >
-                        more info
-                    </button>
+                    {onInfo && (
+                        <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onInfo(); }}
+                            className="text-[11px] font-medium text-white/90 pointer-events-auto hover:text-white"
+                        >
+                            more info
+                        </button>
+                    )}
                 </div>
             )}
         </div>
@@ -1550,7 +1555,15 @@ const SuitDesigner = () => {
     // true once the lightbox's sharper layers are decoded; until then it shows the on-screen ones, enlarged.
     const [hiresReady, setHiresReady] = useState(false);
 
+    /*
+     * intentRef is the whole look, completed from whatever was resolved, so a
+     * fabric switch keeps everything on screen. chosenRef is only what the
+     * customer picked — that is what gets remembered, so anything they never
+     * touched keeps following the shop's defaults on their next visit.
+     */
     const intentRef = useRef(EMPTY_INTENT);
+    const chosenRef = useRef(EMPTY_INTENT);
+    const chosenFabricRef = useRef(null);
     const targetFabricRef = useRef(null);
     const commitTokenRef = useRef(0);
     const noticeTimerRef = useRef(null);
@@ -1577,7 +1590,7 @@ const SuitDesigner = () => {
         if (token !== commitTokenRef.current) return; // superseded by a newer change
 
         intentRef.current = completeIntent(intentRef.current, next);
-        saveDesign(next.fabric.id, intentRef.current);
+        saveDesign(chosenFabricRef.current, chosenRef.current);
 
         bitmapCache.pin(urls);
         setSelection(next);
@@ -1615,7 +1628,9 @@ const SuitDesigner = () => {
                     list.find((f) => f.is_default) ||
                     list[0];
 
-                intentRef.current = saved?.intent || EMPTY_INTENT;
+                chosenRef.current = saved?.intent || EMPTY_INTENT;
+                chosenFabricRef.current = linked && fabric.id === linked ? linked : saved?.fabricId ?? null;
+                intentRef.current = chosenRef.current;
                 targetFabricRef.current = fabric;
                 await commit(resolveSelection(fabric, intentRef.current), { kind: "initial" });
             }
@@ -1684,6 +1699,7 @@ const SuitDesigner = () => {
         (fabric) => {
             if (!fabric || fabric.id === targetFabricRef.current?.id) return;
             targetFabricRef.current = fabric;
+            chosenFabricRef.current = fabric.id;
             const next = resolveSelection(fabric, intentRef.current);
             commit(next, { kind: "fabric", id: fabric.id }, { adjustments: describeAdjustments(intentRef.current, next) });
         },
@@ -1695,6 +1711,7 @@ const SuitDesigner = () => {
             const fabric = targetFabricRef.current;
             if (!fabric) return;
             intentRef.current = { ...intentRef.current, ...patch };
+            chosenRef.current = { ...chosenRef.current, ...patch };
             commit(resolveSelection(fabric, intentRef.current), { kind, id });
         },
         [commit]
@@ -1780,6 +1797,8 @@ const SuitDesigner = () => {
         if (!fabrics?.length) return;
         clearSavedDesign();
         intentRef.current = EMPTY_INTENT;
+        chosenRef.current = EMPTY_INTENT;
+        chosenFabricRef.current = null;
         const fabric = fabrics.find((f) => f.is_default) || fabrics[0];
         targetFabricRef.current = fabric;
         setShowLiningPanel(false);
@@ -2327,7 +2346,7 @@ const SuitDesigner = () => {
                             </div>
 
                             <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain thin-scrollbar">
-                                <div className={`grid grid-cols-2 gap-2 p-4 ${lgCols(layout.lining_columns, 2)} lg:gap-3 lg:p-5 pb-[max(1rem,env(safe-area-inset-bottom))]`}>
+                                <div className={`grid grid-cols-2 gap-x-3 gap-y-6 p-4 ${lgCols(layout.lining_columns, 2)} lg:gap-x-4 lg:gap-y-7 lg:p-5 pb-[max(1rem,env(safe-area-inset-bottom))]`}>
                                     {selectedFabric.custom_linings?.map((lining) => (
                                         <FabricOptionTile
                                             key={lining.id}
