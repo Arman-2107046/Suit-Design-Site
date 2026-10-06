@@ -90,6 +90,31 @@ class CloudflareMediaTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_a_rejected_certificate_fails_at_once_instead_of_retrying(): void
+    {
+        /* What PHP reports when antivirus HTTPS scanning re-signs the connection */
+        $attempts = 0;
+        Http::fake(function () use (&$attempts) {
+            $attempts++;
+            throw new \Illuminate\Http\Client\ConnectionException(
+                'cURL error 60: SSL certificate problem: unable to get local issuer certificate'
+            );
+        });
+
+        $started = microtime(true);
+
+        try {
+            app(\App\Services\Cloudflare\CloudflareImages::class)->directUpload();
+            $this->fail('expected the connection to be refused');
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            $this->assertStringContainsString('local issuer certificate', $e->getMessage());
+        }
+
+        /* Three tries with back-off would take over two seconds; one takes none */
+        $this->assertLessThan(1.0, microtime(true) - $started);
+        $this->assertSame(1, $attempts, 'a rejected certificate is not retried');
+    }
+
     /* ---------------------------------------------------------------- */
     /*  Browser uploads                                                  */
     /* ---------------------------------------------------------------- */

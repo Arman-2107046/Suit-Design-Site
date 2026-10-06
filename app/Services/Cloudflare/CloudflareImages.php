@@ -192,10 +192,28 @@ class CloudflareImages
     /** Rate limits and Cloudflare's own hiccups are worth a second try; a bad request is not. */
     private function worthRetrying($exception): bool
     {
+        if (self::certificateRejected($exception)) {
+            return false;
+        }
+
         /* A dropped connection has no response at all, and is worth retrying too. */
         $status = $exception instanceof RequestException ? $exception->response->status() : null;
 
         return $status === null || $status === 429 || $status >= 500;
+    }
+
+    /**
+     * The connection was refused because this machine does not trust the
+     * certificate it was shown — usually antivirus software scanning HTTPS
+     * (Avast does) with a root PHP has not been told about. It fails the same
+     * way every time, so retrying only burns PHP's time limit: on a form save
+     * that lost the upload outright.
+     */
+    public static function certificateRejected($exception): bool
+    {
+        $message = $exception instanceof \Throwable ? $exception->getMessage() : '';
+
+        return str_contains($message, 'SSL certificate') || str_contains($message, 'local issuer certificate');
     }
 
     private function endpoint(string $path): string

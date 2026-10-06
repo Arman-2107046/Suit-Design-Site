@@ -121,7 +121,8 @@ class CloudflareStream
             ->acceptJson()
             ->asJson()
             ->timeout(60)
-            ->retry(3, 1000, fn ($e) => ($e->response?->status() ?? 500) >= 500 || $e->response?->status() === 429, throw: false);
+            ->retry(3, 1000, fn ($e) => ! CloudflareImages::certificateRejected($e)
+                && (($e->response?->status() ?? 500) >= 500 || $e->response?->status() === 429), throw: false);
     }
 
     private function endpoint(string $path): string
