@@ -19,7 +19,12 @@
         const EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'];
         const SYSTEM_FILES = ['.ds_store', 'thumbs.db', 'desktop.ini'];
 
-        const CONCURRENCY = 4;      /* uploads in flight at once */
+        /*
+         * Uploads in flight at once. Each asks this server for a one-time address
+         * first, and Cloudflare allows about 4 of those a second; when a burst of
+         * small files goes faster than that, the 429 is retried with back-off.
+         */
+        const CONCURRENCY = 10;
         const ATTEMPTS = 3;         /* per file, for failures worth retrying */
         const FILE_CHUNK = 50;      /* files per filing request */
         const VISIBLE_ROWS = 120;   /* the list never renders more than this */
