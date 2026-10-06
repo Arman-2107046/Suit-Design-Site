@@ -7,6 +7,7 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\ToggleColumn;
 use Filament\Tables\Table;
 
 class SleeveTypesTable
@@ -26,6 +27,10 @@ class SleeveTypesTable
                     ->searchable(),
                 ImageColumn::make('diagram')
                     ->searchable(),
+                /* Every fabric opens on this shoulder; switching one on switches the others off. */
+                ToggleColumn::make('is_default')
+                    ->label('Default')
+                    ->tooltip('The shoulder every fabric starts on'),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()

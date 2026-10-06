@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\CustomLining;
 use App\Models\DesignerSetting;
 use App\Models\Fabric;
+use App\Models\LapelSubCategory;
+use App\Models\LapelCategory;
+use App\Models\SleeveType;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
@@ -158,13 +161,24 @@ class SuitConfiguratorController extends Controller
             ->all();
 
 
+        /*
+         * The shoulder marked default in Sleeve Types is where every fabric
+         * starts. With none marked, each fabric falls back to its own flag.
+         */
+        $defaultShoulder = SleeveType::defaultId();
+
+        /* Likewise the lapel style and width — marked under Lapel Categories and Sub Categories. */
+        $defaultLapelStyle = LapelCategory::defaultId();
+        $defaultLapelWidth = LapelSubCategory::defaultId();
+
+
         return [
             'success' => true,
 
             /* How the admin wants the option lists laid out. */
             'layout' => DesignerSetting::current()->toLayoutArray(),
 
-            'data' => $fabrics->map(function ($fabric) use ($customLinings) {
+            'data' => $fabrics->map(function ($fabric) use ($customLinings, $defaultShoulder, $defaultLapelStyle, $defaultLapelWidth) {
 
                 return [
 
@@ -194,13 +208,15 @@ class SuitConfiguratorController extends Controller
                     'sleeves' => $fabric->sleeves
                         ->where('status', true)
                         ->values()
-                        ->map(function ($sleeve) {
+                        ->map(function ($sleeve) use ($defaultShoulder) {
 
                             return [
                                 'id' => $sleeve->id,
                                 'image' => $sleeve->image,
                                 'layer_index' => $sleeve->layer_index,
-                                'is_default' => $sleeve->is_default,
+                                'is_default' => $defaultShoulder
+                                    ? (int) $sleeve->sleeve_type_id === (int) $defaultShoulder
+                                    : (bool) $sleeve->is_default,
 
                                 'type' => $sleeve->sleeveType
                                     ? [
@@ -290,7 +306,15 @@ class SuitConfiguratorController extends Controller
                     'bodies' => $fabric->body
                         ->where('status', true)
                         ->values()
-                        ->map(function ($body) use ($fabric) {
+                        ->map(function ($body) use ($fabric, $defaultLapelStyle, $defaultLapelWidth) {
+
+                            /* Which lapel this body starts on, when a default style or width is marked. */
+                            $startingLapel = $this->startingLapel(
+                                $body->lapels->where('status', true),
+                                $defaultLapelStyle,
+                                $defaultLapelWidth
+                            );
+
 
                             $bodyType = $body->bodyType;
 
@@ -476,7 +500,7 @@ class SuitConfiguratorController extends Controller
                                 'lapels' => $body->lapels
                                     ->where('status', true)
                                     ->values()
-                                    ->map(function ($lapel) {
+                                    ->map(function ($lapel) use ($startingLapel) {
 
                                         return [
 
@@ -486,7 +510,9 @@ class SuitConfiguratorController extends Controller
 
                                             'layer_index' => $lapel->layer_index,
 
-                                            'is_default' => $lapel->is_default,
+                                            'is_default' => $startingLapel !== null
+                                                ? (int) $lapel->id === $startingLapel
+                                                : (bool) $lapel->is_default,
 
 
                                             /*
@@ -540,5 +566,36 @@ class SuitConfiguratorController extends Controller
                 ];
             }),
         ];
+    }
+
+    /**
+     * The lapel a body starts on, given the style and width marked default.
+     *
+     * A lapel matching both wins; failing that, one in the default style, then
+     * one in the default width — the style is what a customer sees first. The
+     * lapels arrive in the admin's drag order, so ties go to the earliest.
+     * Null when nothing is marked, or this body has nothing that matches, in
+     * which case each lapel's own flag decides as it always did.
+     */
+    private function startingLapel(iterable $lapels, ?int $style, ?int $width): ?int
+    {
+        if ($style === null && $width === null) {
+            return null;
+        }
+
+        $best = null;
+        $bestScore = 0;
+
+        foreach ($lapels as $lapel) {
+            $score = ($style !== null && (int) $lapel->lapel_category_id === $style ? 2 : 0)
+                + ($width !== null && (int) $lapel->lapel_subcategory_id === $width ? 1 : 0);
+
+            if ($score > $bestScore) {
+                $best = (int) $lapel->id;
+                $bestScore = $score;
+            }
+        }
+
+        return $best;
     }
 }

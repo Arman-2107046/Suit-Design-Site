@@ -8,6 +8,7 @@ use Filament\Actions\EditAction;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\ToggleColumn;
 use Filament\Tables\Table;
 
 class LapelSubcategoriesTable
@@ -33,10 +34,10 @@ class LapelSubcategoriesTable
                     ->boolean()
                     ->sortable(),
 
-                IconColumn::make('is_default')
+                /* Every fabric starts on this lapel width; switching one on switches the others off. */
+                ToggleColumn::make('is_default')
                     ->label('Default')
-                    ->boolean()
-                    ->sortable(),
+                    ->tooltip('The lapel width every fabric starts on'),
 
                 TextColumn::make('created_at')
                     ->dateTime()
