@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\BlogPosts;
 
+use Filament\Facades\Filament;
 use App\Filament\Resources\BlogPosts\Pages\CreateBlogPost;
 use App\Filament\Resources\BlogPosts\Pages\EditBlogPost;
 use App\Filament\Resources\BlogPosts\Pages\ListBlogPosts;
@@ -76,7 +77,7 @@ class BlogPostResource extends Resource
                     Select::make('status')->options(BlogPost::STATUSES)->default('draft')->required()->native(false),
                     DateTimePicker::make('published_at')->label('Publish at')->seconds(false)->helperText('Leave empty to publish immediately when the status is set to Published. A future date schedules it.'),
                     Toggle::make('is_featured')->label('Featured story')->helperText('Shown large at the top of the journal.'),
-                    Select::make('user_id')->label('Author')->relationship('author', 'name')->default(fn () => auth()->id())->searchable()->preload()->required(),
+                    Select::make('admin_id')->label('Author')->relationship('author', 'name')->default(fn () => Filament::auth()->id())->searchable()->preload()->required(),
                 ]),
                 Section::make('Cover')->components([
                     FileUpload::make('cover_image')->hiddenLabel()->disk('cloudflare')->directory('journal')->image()->imageEditor()->imageEditorAspectRatios(['16:9', '3:2', '4:5'])->maxSize(10240)->fetchFileInformation(false)
@@ -102,6 +103,8 @@ class BlogPostResource extends Resource
                 ImageColumn::make('cover_image_url')->label('')->square()->size(48),
                 TextColumn::make('title')->searchable()->weight('medium')->wrap()->description(fn (BlogPost $record) => $record->category?->name),
                 TextColumn::make('author.name')->label('Author')->toggleable(),
+                TextColumn::make('source')->label('Source')->badge()->color('info')->icon(Heroicon::OutlinedBolt)
+                    ->formatStateUsing(fn (?string $state) => $state === 'rankyak' ? 'RankYak' : $state)->placeholder('Written here')->toggleable(),
                 TextColumn::make('status')->badge()->formatStateUsing(fn (string $state) => BlogPost::STATUSES[$state] ?? $state)
                     ->color(fn (string $state) => $state === 'published' ? 'success' : 'gray'),
                 IconColumn::make('is_featured')->label('Featured')->boolean()->alignCenter(),
@@ -113,6 +116,7 @@ class BlogPostResource extends Resource
             ->filters([
                 SelectFilter::make('status')->options(BlogPost::STATUSES),
                 SelectFilter::make('blog_category_id')->label('Category')->relationship('category', 'name'),
+                SelectFilter::make('source')->label('Source')->options(['rankyak' => 'RankYak']),
             ])
             ->recordActions([
                 Action::make('open')->label('View')->icon(Heroicon::OutlinedArrowTopRightOnSquare)->url(fn (BlogPost $record) => url("/journal/{$record->slug}"))->openUrlInNewTab()

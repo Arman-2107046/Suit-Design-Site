@@ -182,3 +182,28 @@ html { scroll-behavior: smooth; }
 .prose-journal img + em, .prose-journal figcaption { display: block; margin-top: 0.6em; font-family: 'Figtree', system-ui, sans-serif; font-size: 0.8rem; color: #9ca3af; text-align: center; }
 .prose-journal hr { border: 0; text-align: center; margin: 3em 0; }
 .prose-journal hr::before { content: "· · ·"; letter-spacing: 0.6em; color: #9ca3af; }
+
+/* The standfirst: the opening paragraph, a size up */
+.prose-journal > p.lead { font-size: 1.32em; line-height: 1.6; color: #111; }
+
+/* Callouts: a tailor's tip, and the key takeaways near the end */
+.prose-journal aside { margin-top: 2.2em; padding: 1.4em 1.6em; border-radius: 1.25rem; font-family: 'Figtree', system-ui, sans-serif; font-size: 0.95rem; line-height: 1.65; }
+.prose-journal aside > * + * { margin-top: 0.7em; }
+.prose-journal aside .label { display: block; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: #6b7280; }
+.prose-journal aside.tip { background: #f6f3ee; color: #1f2937; }
+.prose-journal aside.takeaways { background: #111; color: #e5e7eb; }
+.prose-journal aside.takeaways .label { color: #9ca3af; }
+.prose-journal aside.takeaways ul { list-style: none; padding-left: 0; }
+.prose-journal aside.takeaways li { position: relative; padding-left: 1.6em; }
+.prose-journal aside.takeaways li::before { content: "—"; position: absolute; left: 0; color: #6b7280; }
+.prose-journal aside.takeaways strong { color: #fff; }
+
+/* Questions and answers */
+.prose-journal .faq h3 { margin-top: 1.6em; font-size: 1.15rem; }
+.prose-journal .faq h3 + p { margin-top: 0.5em; }
+
+/* Tables, which RankYak articles often carry */
+.prose-journal table { width: 100%; border-collapse: collapse; font-family: 'Figtree', system-ui, sans-serif; font-size: 0.9rem; }
+.prose-journal th, .prose-journal td { padding: 0.7em 0.9em; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: top; }
+.prose-journal th { font-weight: 600; color: #111; background: #fafaf9; }
+.prose-journal code { font-size: 0.85em; padding: 0.15em 0.4em; border-radius: 0.4em; background: #f3f4f6; }
