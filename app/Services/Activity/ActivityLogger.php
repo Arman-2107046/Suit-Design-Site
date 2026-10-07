@@ -156,12 +156,14 @@ class ActivityLogger
     {
         $new = self::clean($model, $model->getChanges());
 
-        $old = self::clean($model, array_map(
+        $raw = array_map(
             fn (string $key) => $model->getRawOriginal($key),
             array_combine(array_keys($new), array_keys($new))
-        ));
+        );
 
-        return ['old' => $old, 'new' => $new];
+        /* 'old' and 'new' are for reading, shortened. 'restore' keeps the previous values whole,
+           exactly as stored, so the edit can be undone later (secrets are never kept). */
+        return ['old' => self::clean($model, $raw), 'new' => $new, 'restore' => self::restorable($model, $raw)];
     }
 
     private static function clean(Model $model, array $attributes): array
@@ -180,6 +182,24 @@ class ActivityLogger
         }
 
         return $clean;
+    }
+
+    /** Previous values in full, as the database holds them, minus anything secret. */
+    private static function restorable(Model $model, array $raw): array
+    {
+        $hidden = $model->getHidden();
+
+        return array_filter(
+            $raw,
+            fn (string $key) => ! in_array($key, self::SECRET, true) && ! in_array($key, $hidden, true),
+            ARRAY_FILTER_USE_KEY,
+        );
+    }
+
+    /** A value as the log shows it: the same shortening the diff uses, so values can be compared. */
+    public static function display(mixed $value): mixed
+    {
+        return self::value($value);
     }
 
     private static function value(mixed $value): mixed

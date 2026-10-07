@@ -109,6 +109,22 @@
         </dl>
     </div>
 
+    {{-- Undo history: this edit was restored later, or this entry is a restore --}}
+    @php
+        $restoredBy = in_array($activity->event, ['updated', 'restored'], true) ? app(\App\Services\Activity\ActivityRestorer::class)->restoredBy($activity) : null;
+        $undid = $activity->event === 'restored' ? \App\Models\Activity::query()->find($properties['restored_from'] ?? null) : null;
+    @endphp
+    @if ($restoredBy)
+        <div class="al-card al-warncard">
+            Restored {{ $restoredBy->created_at->diffForHumans() }} by <strong>{{ $restoredBy->admin?->name ?? $restoredBy->admin_name ?? 'someone' }}</strong>, so these changes were undone.
+        </div>
+    @endif
+    @if ($undid)
+        <div class="al-card al-warncard">
+            This undid an edit {{ $undid->admin_name ? 'by '.$undid->admin_name.' ' : '' }}from {{ $undid->created_at->format('j M Y, H:i') }}.
+        </div>
+    @endif
+
     @if ($activity->event === 'bulk_upload')
         @php($breakdown = $properties['breakdown'] ?? [])
         @php($top = max(1, ...array_values($breakdown ?: [0])))
@@ -140,14 +156,14 @@
     @elseif ($changes !== [])
         <div>
             <p class="al-title">
-                {{ match ($activity->event) { 'updated' => 'What changed', 'deleted' => 'What was removed', default => 'What was saved' } }}
+                {{ match ($activity->event) { 'updated', 'restored' => 'What changed', 'deleted' => 'What was removed', default => 'What was saved' } }}
             </p>
             <div class="al-card">
                 <table class="al-table">
                     <thead>
                         <tr>
                             <th class="al-field">Field</th>
-                            @if ($activity->event === 'updated')
+                            @if (in_array($activity->event, ['updated', 'restored'], true))
                                 <th>Before</th>
                                 <th>After</th>
                             @else
@@ -161,7 +177,7 @@
                             @php($new = $show($change['new']))
                             <tr>
                                 <td class="al-field">{{ Str::headline($change['field']) }}</td>
-                                @if ($activity->event === 'updated')
+                                @if (in_array($activity->event, ['updated', 'restored'], true))
                                     <td>@if ($old !== null)<span class="al-old">{{ $old }}</span>@else<span class="al-none">empty</span>@endif</td>
                                     <td>@if ($new !== null)<span class="al-new">{{ $new }}</span>@else<span class="al-none">empty</span>@endif</td>
                                 @else

@@ -4,6 +4,11 @@ namespace App\Filament\Resources\Activities;
 
 use App\Filament\Resources\Activities\Pages\ListActivities;
 use App\Models\Activity;
+use App\Services\Activity\ActivityRestorer;
+use Filament\Actions\Action;
+use Filament\Facades\Filament;
+use Filament\Notifications\Notification;
+use Illuminate\Validation\ValidationException;
 use BackedEnum;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
@@ -86,7 +91,7 @@ class ActivityResource extends Resource
                 TextColumn::make('changes')
                     ->label('Changes')
                     ->state(fn (Activity $record) => match (true) {
-                        $record->event === 'updated' => $record->changeCount().' '.str('field')->plural($record->changeCount()),
+                        in_array($record->event, ['updated', 'restored'], true) => $record->changeCount().' '.str('field')->plural($record->changeCount()),
                         $record->event === 'bulk_upload' && ($record->properties['failed'] ?? 0) > 0 => $record->properties['failed'].' rejected',
                         default => null,
                     })
@@ -146,7 +151,9 @@ class ActivityResource extends Resource
                     ->schema([])
                     ->modalContent(fn (Activity $record) => view('filament.activity.details', ['activity' => $record]))
                     ->modalSubmitAction(false)
+                    ->extraModalFooterActions(fn (Activity $record) => [static::restoreAction()->cancelParentActions()])
                     ->modalCancelActionLabel('Close'),
+                static::restoreAction()->iconButton()->tooltip(fn (Activity $record) => static::plan($record)['reason'] ?? 'Put these fields back to what they were'),
             ])
             ->recordAction('view')
             ->striped()
@@ -155,6 +162,47 @@ class ActivityResource extends Resource
             ->emptyStateIcon(Heroicon::OutlinedClock)
             ->emptyStateHeading('Nothing logged yet')
             ->emptyStateDescription('Sign-ins, edits, deletions, reorders and bulk uploads by the team will appear here.');
+    }
+
+    /** "Restore": put an edit's fields back to what they were before it. */
+    public static function restoreAction(): Action
+    {
+        return Action::make('restore')
+            ->label('Restore')
+            ->icon(Heroicon::OutlinedArrowUturnLeft)
+            ->color('warning')
+            ->visible(fn (Activity $record) => in_array($record->event, ['updated', 'restored'], true))
+            ->disabled(fn (Activity $record) => ! static::plan($record)['possible'])
+            ->requiresConfirmation()
+            ->modalIcon(Heroicon::OutlinedArrowUturnLeft)
+            ->modalIconColor('warning')
+            ->modalHeading(fn (Activity $record) => 'Restore “'.$record->subject_label.'”?')
+            ->modalDescription('These fields go back to what they were before this edit. The restore is logged, so it can be undone too.')
+            ->modalContent(fn (Activity $record) => view('filament.activity.restore', ['plan' => static::plan($record)]))
+            ->modalWidth(Width::TwoExtraLarge)
+            ->modalSubmitActionLabel('Restore these values')
+            ->action(function (Activity $record, ActivityRestorer $restorer) {
+                try {
+                    $restored = $restorer->restore($record, Filament::auth()->user());
+                    $count = count($restored->properties['new'] ?? []);
+                    Notification::make()->title('Restored')->body($count.' '.str('field')->plural($count).' of “'.$record->subject_label.'” put back.')->success()->send();
+                } catch (ValidationException $e) {
+                    Notification::make()->title('Could not restore')->body(collect($e->errors())->flatten()->implode(' '))->danger()->persistent()->send();
+                } catch (\RuntimeException $e) {
+                    Notification::make()->title('Could not restore')->body($e->getMessage())->danger()->persistent()->send();
+                }
+
+                static::$plans = [];
+            });
+    }
+
+    /** @var array<int, array<string, mixed>> what a restore would do, worked out once per entry per request */
+    private static array $plans = [];
+
+    /** @return array<string, mixed> */
+    public static function plan(Activity $record): array
+    {
+        return static::$plans[$record->id] ??= app(ActivityRestorer::class)->plan($record);
     }
 
     public static function getPages(): array

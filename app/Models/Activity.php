@@ -33,6 +33,7 @@ class Activity extends Model
         'login_failed' => ['Failed sign-in', 'warning', 'heroicon-m-shield-exclamation'],
         'imported' => ['Imported', 'success', 'heroicon-m-arrow-down-tray'],
         'refreshed' => ['Refreshed', 'info', 'heroicon-m-arrow-path'],
+        'restored' => ['Restored', 'warning', 'heroicon-m-arrow-uturn-left'],
     ];
 
     protected function casts(): array
@@ -92,6 +93,7 @@ class Activity extends Model
             'login_failed' => 'Failed sign-in as '.($this->subject_label ?? 'unknown'),
             'imported' => 'Imported “'.$this->subject_label.'” from '.($this->properties['source'] ?? 'outside'),
             'refreshed' => 'Refreshed “'.$this->subject_label.'” from '.($this->properties['source'] ?? 'outside'),
+            'restored' => 'Restored '.strtolower($this->subjectTypeLabel() ?? 'record').' “'.$this->subject_label.'” to an earlier version',
             'reordered' => 'Reordered '.Str::plural(strtolower($this->subjectTypeLabel() ?? 'item'), (int) ($this->properties['count'] ?? 2)),
             'bulk_upload' => 'Bulk uploaded '.($this->properties['filed'] ?? 0).' '.Str::plural('file', (int) ($this->properties['filed'] ?? 0)),
             default => trim($this->eventLabel().' '.strtolower($this->subjectTypeLabel() ?? '')
