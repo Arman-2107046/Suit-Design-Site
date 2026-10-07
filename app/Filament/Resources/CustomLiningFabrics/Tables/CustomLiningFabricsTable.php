@@ -2,41 +2,35 @@
 
 namespace App\Filament\Resources\CustomLiningFabrics\Tables;
 
+use App\Filament\Support\SwatchCards;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
-use Filament\Tables\Columns\IconColumn;
-use Filament\Tables\Columns\ImageColumn;
+use Filament\Tables\Columns\Layout\Stack;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 
+/* Lining cloths as swatch cards, with a switch to offer or withdraw each one. */
 class CustomLiningFabricsTable
 {
     public static function configure(Table $table): Table
     {
-        return $table
+        return SwatchCards::grid($table)
             ->reorderable('sort_order')
             ->defaultSort('sort_order')
             ->columns([
-                TextColumn::make('sort_order')
-                    ->label('#')
-                    ->sortable(),
-                TextColumn::make('name')
-                    ->searchable(),
-                ImageColumn::make('image'),
-                IconColumn::make('status')
-                    ->boolean(),
-                TextColumn::make('created_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('updated_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
+                Stack::make([
+                    SwatchCards::image('image'),
+                    TextColumn::make('name')
+                        ->searchable()
+                        ->weight('semibold')
+                        ->extraAttributes(['class' => 'ct-swatch-name']),
+                    SwatchCards::toggle(),
+                ])->space(3),
             ])
             ->filters([
-                //
+                TernaryFilter::make('status')->label('Shown to customers')->trueLabel('Live')->falseLabel('Hidden'),
             ])
             ->recordActions([
                 EditAction::make(),

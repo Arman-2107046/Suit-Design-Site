@@ -35,6 +35,7 @@
     .ry-copy { display: inline-flex; align-items: center; gap: 6px; padding: 0 16px; border: 0; border-left: 1px solid #e2e8f0; background: #fff; font-size: 13px; font-weight: 600; color: #2563eb; cursor: pointer; transition: background 0.15s ease; }
     .ry-copy:hover { background: #eff6ff; }
     .ry-copy svg { width: 15px; height: 15px; }
+    .ry-hint { font-size: 12px; font-weight: 500; color: #94a3b8; }
     .ry-note { margin-top: 8px; font-size: 12.5px; color: #64748b; }
     .ry-warn { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #fffbeb; color: #92400e; font-size: 12.5px; box-shadow: inset 0 0 0 1px #fde68a; }
     .ry-error { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #fef2f2; color: #991b1b; font-size: 12.5px; box-shadow: inset 0 0 0 1px #fecaca; }
@@ -71,7 +72,7 @@
         <div class="ry-body" x-data="{ copied: false }">
             <div class="ry-label">
                 <span>Webhook URL</span>
-                <span style="font-size: 12px; font-weight: 500; color: #94a3b8;">Paste into RankYak → Settings → Integrations → Webhook</span>
+                <span class="ry-hint">Paste into RankYak → Settings → Integrations → Webhook</span>
             </div>
 
             <div class="ry-url">

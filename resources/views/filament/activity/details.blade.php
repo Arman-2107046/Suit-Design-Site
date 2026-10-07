@@ -54,6 +54,12 @@
     .al-none { color: #cbd5e1; }
     .al-link { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: #4f46e5; text-decoration: none; }
     .al-link:hover { text-decoration: underline; }
+    .al-who { font-size: 15px; font-weight: 650; color: #0f172a; }
+    .al-when { font-size: 12.5px; color: #64748b; }
+    .al-faint { color: #94a3b8; }
+    .al-dest { font-weight: 600; color: #0f172a; }
+    .al-num { font-variant-numeric: tabular-nums; color: #475569; }
+    .al-warncard { padding: 14px 18px; background: #fffbeb; border-color: #fde68a; color: #92400e; }
     .al-bar { height: 6px; border-radius: 9999px; background: #eef2ff; overflow: hidden; }
     .al-bar span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #6366f1, #06b6d4); }
 </style>
@@ -63,8 +69,8 @@
         <div class="al-head">
             @include('filament.partials.admin-avatar', ['name' => $name, 'initials' => \App\Models\Admin::initialsFor($name), 'size' => 42])
             <div style="min-width: 0; flex: 1;">
-                <div style="font-size: 15px; font-weight: 650; color: #0f172a;">{{ $name ?? 'Unknown' }}</div>
-                <div style="font-size: 12.5px; color: #64748b;">
+                <div class="al-who">{{ $name ?? 'Unknown' }}</div>
+                <div class="al-when">
                     {{ $activity->created_at->diffForHumans() }}
                     @if ($name && ! $activity->admin) · no longer an administrator @endif
                 </div>
@@ -82,7 +88,7 @@
                         <a class="al-link" href="{{ $recordUrl }}">{{ $activity->subjectTypeLabel() }} #{{ $activity->subject_id }} →</a>
                     @elseif ($activity->subject_type)
                         {{ $activity->subjectTypeLabel() }}{{ $activity->subject_id ? ' #'.$activity->subject_id : '' }}
-                        @if ($activity->event === 'deleted') <span style="color: #94a3b8;">(deleted)</span> @endif
+                        @if ($activity->event === 'deleted') <span class="al-faint">(deleted)</span> @endif
                     @else
                         <span class="al-none">—</span>
                     @endif
@@ -112,8 +118,8 @@
                 @forelse ($breakdown as $destination => $count)
                     <div>
                         <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                            <span style="font-weight: 600; color: #0f172a;">{{ Str::headline($destination) }}</span>
-                            <span style="font-variant-numeric: tabular-nums; color: #475569;">{{ number_format($count) }}</span>
+                            <span class="al-dest">{{ Str::headline($destination) }}</span>
+                            <span class="al-num">{{ number_format($count) }}</span>
                         </div>
                         <div class="al-bar"><span style="width: {{ round($count / $top * 100, 1) }}%;"></span></div>
                     </div>
@@ -123,7 +129,7 @@
             </div>
         </div>
     @elseif ($activity->event === 'login_failed')
-        <div class="al-card" style="padding: 14px 18px; background: #fffbeb; border-color: #fde68a; color: #92400e;">
+        <div class="al-card al-warncard">
             Someone tried to sign in as <strong>{{ $activity->subject_label }}</strong> with the wrong password
             @if (! $activity->subject_id) — no administrator has that email @endif.
         </div>

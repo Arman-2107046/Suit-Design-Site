@@ -62,6 +62,8 @@
     .sp-steps p { margin: 2px 0 0; font-size: 12.5px; line-height: 1.5; color: #64748b; }
 
     .sp-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 14px; padding: 11px 22px; border-top: 1px solid #f8fafc; font-size: 13px; }
+    .sp-muted { color: #64748b; }
+    .sp-empty { grid-template-columns: 1fr; color: #94a3b8; }
     .sp-row a { color: #2563eb; font-weight: 600; text-decoration: none; font-size: 12.5px; }
     .sp-badge { padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; }
     .sp-paid { background: #ecfdf5; color: #047857; } .sp-pending { background: #f1f5f9; color: #475569; }
@@ -153,7 +155,7 @@
             <div class="sp-row">
                 <div>
                     <a href="{{ \App\Filament\Resources\Orders\OrderResource::getUrl('view', ['record' => $order]) }}">{{ $order->number }}</a>
-                    <span style="color: #64748b;"> · {{ $order->email }} · {{ $order->created_at->diffForHumans() }}</span>
+                    <span class="sp-muted"> · {{ $order->email }} · {{ $order->created_at->diffForHumans() }}</span>
                 </div>
                 <span style="font-weight: 600; font-variant-numeric: tabular-nums;">${{ number_format((float) $order->total, 2) }}</span>
                 <span style="display: flex; gap: 10px; align-items: center;">
@@ -164,7 +166,7 @@
                 </span>
             </div>
         @empty
-            <div class="sp-row" style="grid-template-columns: 1fr; color: #94a3b8;">No card orders yet.</div>
+            <div class="sp-row sp-empty">No card orders yet.</div>
         @endforelse
     </div>
 </div>

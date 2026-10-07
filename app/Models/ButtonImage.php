@@ -13,6 +13,11 @@ class ButtonImage extends Model
     protected $fillable = [
         'name',
         'diagram',
+        'status',
+    ];
+
+    protected $casts = [
+        'status' => 'boolean',
     ];
 
     /**

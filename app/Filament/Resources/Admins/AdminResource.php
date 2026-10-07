@@ -45,6 +45,9 @@ class AdminResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'name';
 
+    /* Last in the search box: the team is searched far less than orders and customers */
+    protected static ?int $globalSearchSort = 9;
+
     public static function form(Schema $schema): Schema
     {
         return $schema->columns(1)->components([

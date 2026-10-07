@@ -178,4 +178,36 @@ class OrderResource extends Resource
             ->openUrlInNewTab()
             ->visible(fn (Order $record) => filled($record->stripe_payment_intent_id));
     }
+    /* ── Global search: an order number, a customer's name, email or phone ── */
+
+    protected static ?int $globalSearchSort = 1;
+
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['number', 'email'];
+    }
+
+    public static function getGlobalSearchResults(string $search): \Illuminate\Support\Collection
+    {
+        $term = \App\Filament\Support\Search::term($search);
+
+        return Order::query()
+            ->where(function (\Illuminate\Database\Eloquent\Builder $query) use ($term) {
+                $query->where('number', 'like', $term)->orWhere('email', 'like', $term);
+                \App\Filament\Support\Search::orJsonLike($query, 'shipping', 'name', $term);
+                \App\Filament\Support\Search::orJsonLike($query, 'shipping', 'phone', $term);
+            })
+            ->latest('id')
+            ->limit(static::getGlobalSearchResultsLimit())
+            ->get()
+            ->map(fn (Order $order) => new \Filament\GlobalSearch\GlobalSearchResult(
+                title: $order->number,
+                url: static::getUrl('view', ['record' => $order]),
+                details: [
+                    'Customer' => $order->shipping['name'] ?? $order->email,
+                    'Total' => '$'.number_format((float) $order->total, 2),
+                    'Status' => $order->status->getLabel(),
+                ],
+            ));
+    }
 }

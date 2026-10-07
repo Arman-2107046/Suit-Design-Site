@@ -103,4 +103,23 @@ class ContactMessageResource extends Resource
             'view' => ViewContactMessage::route('/{record}'),
         ];
     }
+    /* ── Global search: messages by sender or subject ── */
+
+    protected static ?string $recordTitleAttribute = 'name';
+
+    protected static ?int $globalSearchSort = 3;
+
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['name', 'email', 'subject'];
+    }
+
+    public static function getGlobalSearchResultDetails(\Illuminate\Database\Eloquent\Model $record): array
+    {
+        return array_filter([
+            'Subject' => $record->subject,
+            'Email' => $record->email,
+            'Received' => $record->created_at?->diffForHumans(),
+        ]);
+    }
 }

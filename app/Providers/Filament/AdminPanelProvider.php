@@ -7,6 +7,7 @@ use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use App\Filament\NavigationGroups;
+use App\Filament\Support\AdminSearchProvider;
 use App\Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
@@ -33,7 +34,15 @@ class AdminPanelProvider extends PanelProvider
             ->authGuard('admin')
             ->authPasswordBroker('admins')
             ->login()
-            ->darkMode(false)
+            /* Light, dark or the system setting: each admin picks from the user menu */
+            ->darkMode(true)
+            /* The bell: new orders, messages, swatch requests, failed card payments, RankYak articles */
+            ->databaseNotifications()
+            ->databaseNotificationsPolling('30s')
+            /* Search everything from anywhere: Ctrl+K on Windows, Cmd+K on a Mac */
+            ->globalSearch(AdminSearchProvider::class)
+            ->globalSearchKeyBindings(['ctrl+k', 'command+k'])
+            ->globalSearchFieldKeyBindingSuffix()
             /* Navigating swaps the body instead of unloading the document, so a bulk
                upload in flight survives the admin moving to another menu. */
             ->spa()
@@ -43,6 +52,8 @@ class AdminPanelProvider extends PanelProvider
             /* Every group starts closed, so the sidebar reads as a short list of cards; a click opens one. */
             ->navigationGroups(NavigationGroups::all())
             ->renderHook(PanelsRenderHook::HEAD_END, fn (): string => view('filament.partials.sidebar-groups')->render())
+            ->renderHook(PanelsRenderHook::HEAD_END, fn (): string => view('filament.partials.swatch-cards')->render())
+            ->renderHook(PanelsRenderHook::HEAD_END, fn (): string => view('filament.partials.admin-theme')->render())
             ->renderHook(PanelsRenderHook::STYLES_AFTER, fn (): string => view('filament.partials.bulk-upload-nav')->render())
             ->renderHook(PanelsRenderHook::BODY_END, fn (): string => view('filament.partials.bulk-upload-dock')->render())
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')

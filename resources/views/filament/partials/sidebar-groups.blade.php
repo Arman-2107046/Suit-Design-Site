@@ -37,6 +37,7 @@
         .fi-sidebar-group[data-group-label="{{ $label }}"] {
             --grp-icon: {!! $chipIcon($icon, '#475569') !!};
             --grp-icon-active: {!! $chipIcon($icon, '#ffffff') !!};
+            --grp-icon-dark: {!! $chipIcon($icon, '#d4d4d8') !!};
         }
     @endforeach
 

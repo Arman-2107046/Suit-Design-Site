@@ -15,5 +15,4 @@
     width: {{ $size }}px; height: {{ $size }}px; border-radius: 9999px;
     background: {{ $background }}; color: {{ $name ? '#fff' : '#64748b' }};
     font-size: {{ round($size * 0.36) }}px; font-weight: 650; letter-spacing: 0.02em;
-    box-shadow: 0 0 0 2px #fff, 0 1px 3px rgb(15 23 42 / 0.18);
-">{{ $initials }}</span>
+" class="ct-avatar">{{ $initials }}</span>

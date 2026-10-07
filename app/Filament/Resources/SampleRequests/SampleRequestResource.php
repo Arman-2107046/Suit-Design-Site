@@ -128,4 +128,31 @@ class SampleRequestResource extends Resource
             'view' => ViewSampleRequest::route('/{record}'),
         ];
     }
+    /* ── Global search: who asked, by name or email ── */
+
+    protected static ?int $globalSearchSort = 4;
+
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['email'];
+    }
+
+    public static function getGlobalSearchResults(string $search): \Illuminate\Support\Collection
+    {
+        $term = \App\Filament\Support\Search::term($search);
+
+        return SampleRequest::query()
+            ->where(function (\Illuminate\Database\Eloquent\Builder $query) use ($term) {
+                $query->where('email', 'like', $term);
+                \App\Filament\Support\Search::orJsonLike($query, 'shipping', 'name', $term);
+            })
+            ->latest('id')
+            ->limit(static::getGlobalSearchResultsLimit())
+            ->get()
+            ->map(fn (SampleRequest $sample) => new \Filament\GlobalSearch\GlobalSearchResult(
+                title: ($sample->shipping['name'] ?? $sample->email).' · '.count($sample->fabrics ?? []).' '.str('swatch')->plural(count($sample->fabrics ?? [])),
+                url: static::getUrl('view', ['record' => $sample]),
+                details: ['Email' => $sample->email, 'Requested' => $sample->created_at?->diffForHumans()],
+            ));
+    }
 }

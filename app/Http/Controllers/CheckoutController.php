@@ -6,6 +6,7 @@ use App\Enums\OrderStatus;
 use App\Models\BodyProfile;
 use App\Models\Fabric;
 use App\Models\Order;
+use App\Services\AdminNotifier;
 use App\Services\Payments\OrderPayments;
 use App\Services\Payments\StripeGateway;
 use App\Support\BodyEstimator;
@@ -154,6 +155,7 @@ class CheckoutController extends Controller
         }
 
         $this->payments->sendConfirmation($order);
+        AdminNotifier::orderPlaced($order);
 
         return redirect()->route('orders.show', $order)->with('placed', true);
     }

@@ -5,6 +5,7 @@ namespace App\Services\Payments;
 use App\Enums\OrderStatus;
 use App\Mail\OrderPlaced;
 use App\Models\Order;
+use App\Services\AdminNotifier;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 
@@ -53,6 +54,8 @@ class OrderPayments
 
         if ($justPaid) {
             $this->sendConfirmation($order);
+            /* A card order reaches the team once it is paid, not while the customer is still on Stripe */
+            AdminNotifier::orderPlaced($order);
         }
 
         return $order;
@@ -63,6 +66,7 @@ class OrderPayments
     {
         if ($order->payment_status === 'pending') {
             $order->forceFill(['payment_status' => 'failed'])->save();
+            AdminNotifier::cardPaymentFailed($order);
         }
 
         return $order;

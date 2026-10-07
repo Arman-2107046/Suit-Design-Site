@@ -49,4 +49,17 @@ class FabricResource extends Resource
             'edit' => EditFabric::route('/{record}/edit'),
         ];
     }
+    /* ── Global search: fabrics by name ── */
+
+    protected static ?string $recordTitleAttribute = 'name';
+
+    protected static ?int $globalSearchSort = 5;
+
+    public static function getGlobalSearchResultDetails(\Illuminate\Database\Eloquent\Model $record): array
+    {
+        return [
+            'Price' => '$'.number_format((float) $record->price, 2),
+            'Shown' => $record->status ? 'Live' : 'Hidden',
+        ];
+    }
 }

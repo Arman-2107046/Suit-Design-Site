@@ -143,4 +143,22 @@ class BlogPostResource extends Resource
             'edit' => EditBlogPost::route('/{record}/edit'),
         ];
     }
+    /* ── Global search: journal posts by title ── */
+
+    protected static ?string $recordTitleAttribute = 'title';
+
+    protected static ?int $globalSearchSort = 6;
+
+    public static function getGlobalSearchEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        return parent::getGlobalSearchEloquentQuery()->with('category');
+    }
+
+    public static function getGlobalSearchResultDetails(\Illuminate\Database\Eloquent\Model $record): array
+    {
+        return array_filter([
+            'Category' => $record->category?->name,
+            'Status' => BlogPost::STATUSES[$record->status] ?? $record->status,
+        ]);
+    }
 }

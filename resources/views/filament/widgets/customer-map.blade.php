@@ -68,10 +68,24 @@
 
                                 this.$refs.loading.remove();
                                 this.draw();
+
+                                /* Light or dark: redraw in the new palette once Filament has switched the page over */
+                                this.onTheme = () => setTimeout(() => this.redraw(), 50);
+                                window.addEventListener('theme-changed', this.onTheme);
+                            },
+
+                            redraw() {
+                                this.clear();
+                                this.$refs.canvas.innerHTML = '';
+                                this.draw();
                             },
 
                             draw() {
                                 const n = this.markers.length;
+                                const dark = document.documentElement.classList.contains('dark');
+                                const ink = dark
+                                    ? { land: '#27272a', edge: '#18181b', landHover: '#3f3f46', dot: '#818cf8', dotHover: '#a5b4fc', scale: ['#312e81', '#4f46e5'] }
+                                    : { land: '#e2e8f0', edge: '#ffffff', landHover: '#c7d2fe', dot: '#4f46e5', dotHover: '#4338ca', scale: ['#e0e7ff', '#a5b4fc'] };
                                 const bubble = (m, scale, opacity) => ({
                                     name: m.name,
                                     coords: m.coords,
@@ -102,16 +116,16 @@
                                     zoomOnScroll: false,
                                     draggable: false,
                                     regionStyle: {
-                                        initial: { fill: '#e2e8f0', stroke: '#ffffff', strokeWidth: 0.5, fillOpacity: 1 },
-                                        hover: { fill: '#c7d2fe', cursor: 'default' },
+                                        initial: { fill: ink.land, stroke: ink.edge, strokeWidth: 0.5, fillOpacity: 1 },
+                                        hover: { fill: ink.landHover, cursor: 'default' },
                                     },
                                     markerStyle: {
-                                        initial: { fill: '#4f46e5', stroke: '#ffffff', strokeWidth: 0 },
-                                        hover: { fill: '#4338ca', cursor: 'default' },
+                                        initial: { fill: ink.dot, stroke: ink.edge, strokeWidth: 0 },
+                                        hover: { fill: ink.dotHover, cursor: 'default' },
                                     },
                                     markers: all,
                                     series: {
-                                        regions: [{ attribute: 'fill', scale: ['#e0e7ff', '#a5b4fc'], values: regionValues, normalizeFunction: 'polynomial' }],
+                                        regions: [{ attribute: 'fill', scale: ink.scale, values: regionValues, normalizeFunction: 'polynomial' }],
                                     },
                                     onMarkerTooltipShow: (event, tooltip, index) => {
                                         tooltip.text(describe(this.markers[Number(index) % n]), true);
@@ -122,8 +136,15 @@
                                 });
                             },
 
-                            destroy() {
+                            clear() {
                                 try { this.map?.destroy(); } catch (e) { /* already gone */ }
+                                this.map = null;
+                            },
+
+                            /* Alpine calls this when the widget leaves the page (SPA navigation) */
+                            destroy() {
+                                window.removeEventListener('theme-changed', this.onTheme);
+                                this.clear();
                             },
                         }"
                     >

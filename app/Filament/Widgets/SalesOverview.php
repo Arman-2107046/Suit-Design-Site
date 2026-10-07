@@ -57,19 +57,19 @@ class SalesOverview extends ChartWidget
         } else {
             $up = $yoy['change'] >= 0;
             $arrow = $up ? '&#8599;' : '&#8600;';
-            $tint = $up ? 'color: #047857; background: #d1fae5;' : 'color: #b91c1c; background: #fee2e2;';
+            $tint = $up ? 'so-up' : 'so-down';
             $versus = $yoy['partial']
                 ? 'vs the same dates in '.($year - 1)
                 : 'vs '.($year - 1);
 
-            $badge = '<span style="display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; '.$tint.'">'
+            $badge = '<span class="so-change '.$tint.'">'
                 .$arrow.' '.($up ? '+' : '').number_format($yoy['change'], 1).'%</span>'
                 .'<span style="font-size: 12px; color: #94a3b8;">'.e($versus).'</span>';
         }
 
         return new HtmlString(
             '<span style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 6px;">'
-            .'<span style="font-size: 30px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.1; color: #0f172a; font-variant-numeric: tabular-nums;">'.$total.'</span>'
+            .'<span class="so-total">'.$total.'</span>'
             .$badge
             .'</span>'
         );

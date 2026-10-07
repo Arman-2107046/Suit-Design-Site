@@ -381,6 +381,8 @@ class SuitConfiguratorController extends Controller
 
                                         'body_buttons' => $bodyType->bodyButtons
                                             ->where('status', true)
+                                            /* A button style switched off in the admin takes its layers with it */
+                                            ->filter(fn ($button) => $button->buttonImage?->status ?? true)
                                             ->values()
                                             ->map(function ($button) {
 

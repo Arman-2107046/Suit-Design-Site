@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Models\Page;
 use App\Models\SampleRequest;
 use App\Models\SiteSetting;
+use App\Services\AdminNotifier;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -37,6 +38,7 @@ class SupportController extends Controller
         ]);
 
         $message = ContactMessage::create($data);
+        AdminNotifier::messageReceived($message);
 
         if ($to = SiteSetting::current()->notifyAddress()) {
             rescue(fn () => Mail::to($to)->send(new ContactMessageReceived($message)));
@@ -87,6 +89,7 @@ class SupportController extends Controller
             'notes' => $data['notes'] ?? null,
         ]);
 
+        AdminNotifier::samplesRequested($sample);
         rescue(fn () => Mail::to($sample->email)->send(new SampleRequestReceived($sample, forCustomer: true)));
         if ($to = SiteSetting::current()->notifyAddress()) {
             rescue(fn () => Mail::to($to)->send(new SampleRequestReceived($sample)));

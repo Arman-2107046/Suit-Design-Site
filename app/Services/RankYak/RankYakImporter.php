@@ -5,6 +5,7 @@ namespace App\Services\RankYak;
 use App\Models\BlogPost;
 use App\Models\RankYakSetting;
 use App\Services\Activity\ActivityLogger;
+use App\Services\AdminNotifier;
 use App\Services\Cloudflare\CloudflareImages;
 use App\Support\HtmlSanitizer;
 use Illuminate\Support\Carbon;
@@ -92,6 +93,11 @@ class RankYakImporter
 
         if ($changed) {
             ActivityLogger::log($created ? 'imported' : 'refreshed', $post, ['source' => 'RankYak', 'rankyak_id' => $externalId], actorName: 'RankYak');
+        }
+
+        /* New articles reach the bell; refreshes of ones already here do not */
+        if ($created) {
+            AdminNotifier::articleImported($post);
         }
 
         return ['post' => $post, 'created' => $created, 'changed' => $changed];
