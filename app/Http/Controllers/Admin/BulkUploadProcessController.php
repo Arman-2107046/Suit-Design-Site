@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\Activity\ActivityLogger;
 use App\Services\BulkUpload\BatchReport;
 use App\Services\BulkUploadService;
 use Illuminate\Http\JsonResponse;
@@ -29,9 +30,13 @@ class BulkUploadProcessController extends Controller
             'files.*.url' => ['required', 'url', 'max:2048'],
         ]);
 
-
-        return response()->json(
-            $report->summarise($service->process($data['files']))
+        /* One log line for the batch, not one per record it touches. */
+        $summary = $report->summarise(
+            ActivityLogger::quietly(fn () => $service->process($data['files']))
         );
+
+        ActivityLogger::logBulkUpload($summary);
+
+        return response()->json($summary);
     }
 }

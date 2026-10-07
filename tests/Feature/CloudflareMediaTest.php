@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Fabric;
 use App\Models\HomepageSetting;
-use App\Models\User;
+use App\Models\Admin;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -125,7 +125,7 @@ class CloudflareMediaTest extends TestCase
             'id' => 'abc', 'uploadURL' => 'https://upload.imagedelivery.net/one-time',
         ]))]);
 
-        $response = $this->actingAs(User::factory()->create())
+        $response = $this->actingAs(Admin::factory()->create(), 'admin')
             ->postJson(route('admin.uploads.image'))
             ->assertOk()
             ->assertJsonPath('uploadURL', 'https://upload.imagedelivery.net/one-time');
@@ -149,7 +149,7 @@ class CloudflareMediaTest extends TestCase
             'success' => false, 'errors' => [['code' => 10000, 'message' => 'Authentication error']],
         ], 403)]);
 
-        $this->actingAs(User::factory()->create())
+        $this->actingAs(Admin::factory()->create(), 'admin')
             ->postJson(route('admin.uploads.image'))
             ->assertStatus(502)
             ->assertJsonPath('message', 'Cloudflare Images could not mint upload URL: Authentication error');
@@ -169,12 +169,12 @@ class CloudflareMediaTest extends TestCase
             ])),
         ]);
 
-        $admin = User::factory()->create();
+        $admin = Admin::factory()->create();
 
-        $this->actingAs($admin)->getJson(route('admin.uploads.video.status', $uid))
+        $this->actingAs($admin, 'admin')->getJson(route('admin.uploads.video.status', $uid))
             ->assertOk()->assertJsonPath('state', 'encoding')->assertJsonPath('url', null);
 
-        $this->actingAs($admin)->getJson(route('admin.uploads.video.status', $uid))
+        $this->actingAs($admin, 'admin')->getJson(route('admin.uploads.video.status', $uid))
             ->assertOk()->assertJsonPath('state', 'ready')->assertJsonPath('url', $mp4);
     }
 
@@ -182,7 +182,7 @@ class CloudflareMediaTest extends TestCase
     {
         Http::fake();
 
-        $this->actingAs(User::factory()->create())
+        $this->actingAs(Admin::factory()->create(), 'admin')
             ->getJson('/admin/uploads/video/..%2F..%2Fsecrets')
             ->assertNotFound();
 

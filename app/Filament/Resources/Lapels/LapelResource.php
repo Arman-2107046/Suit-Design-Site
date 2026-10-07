@@ -18,7 +18,7 @@ class LapelResource extends Resource
 {
     protected static ?string $model = Lapel::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedBookmark;
 
     protected static string|\UnitEnum|null $navigationGroup = 'Lapels';
 

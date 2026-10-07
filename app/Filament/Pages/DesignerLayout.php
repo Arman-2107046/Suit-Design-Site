@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Concerns\SuperAdminOnly;
 use App\Models\DesignerSetting;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
@@ -18,6 +19,8 @@ use Filament\Schemas\Schema;
  */
 class DesignerLayout extends Page
 {
+    use SuperAdminOnly;
+
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-squares-2x2';
 
     protected static ?string $navigationLabel = 'Designer layout';

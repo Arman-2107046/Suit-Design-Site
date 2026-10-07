@@ -17,7 +17,10 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
         ]);
 
-        //
+        /* Signed out of the admin, back to the admin's sign-in, not the shop's. */
+        $middleware->redirectGuestsTo(fn (Illuminate\Http\Request $request) => $request->is('admin', 'admin/*')
+            ? route('filament.admin.auth.login')
+            : route('login'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

@@ -28,7 +28,7 @@ class SampleRequestResource extends Resource
 {
     protected static ?string $model = SampleRequest::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedSwatch;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedGift;
 
     protected static string|\UnitEnum|null $navigationGroup = 'Support';
 

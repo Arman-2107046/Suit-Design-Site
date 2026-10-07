@@ -18,7 +18,7 @@ class BodyTypeResource extends Resource
 {
     protected static ?string $model = BodyType::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedSquare3Stack3d;
 
     protected static string|\UnitEnum|null $navigationGroup = 'Jacket';
 

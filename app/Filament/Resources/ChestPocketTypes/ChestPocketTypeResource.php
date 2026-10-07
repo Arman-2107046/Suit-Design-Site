@@ -18,7 +18,7 @@ class ChestPocketTypeResource extends Resource
 {
     protected static ?string $model = ChestPocketType::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedInboxStack;
 
     protected static string|\UnitEnum|null $navigationGroup = 'Pockets';
 

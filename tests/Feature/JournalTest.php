@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Admin;
 use App\Models\BlogCategory;
 use App\Models\BlogComment;
 use App\Models\BlogPost;
@@ -16,11 +17,11 @@ class JournalTest extends TestCase
 
     private function story(array $overrides = []): BlogPost
     {
-        $author = User::factory()->create(['name' => 'Nadia Karim']);
+        $author = Admin::factory()->create(['name' => 'Nadia Karim']);
         $category = BlogCategory::firstOrCreate(['slug' => 'style'], ['name' => 'Style']);
 
         return BlogPost::create(array_merge([
-            'user_id' => $author->id,
+            'admin_id' => $author->id,
             'blog_category_id' => $category->id,
             'title' => 'How a suit should fit at the shoulder',
             'body' => '<p>' . str_repeat('The shoulder seam should sit where your shoulder ends. ', 60) . '</p>',
@@ -123,7 +124,7 @@ class JournalTest extends TestCase
     public function test_admin_journal_pages_render(): void
     {
         $this->story();
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(Admin::factory()->create(), 'admin');
 
         $this->get('/admin/blog-posts')->assertOk();
         $this->get('/admin/blog-posts/create')->assertOk();

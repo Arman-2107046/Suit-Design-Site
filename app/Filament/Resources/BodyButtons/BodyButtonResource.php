@@ -18,7 +18,7 @@ class BodyButtonResource extends Resource
 {
     protected static ?string $model = BodyButton::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedEllipsisVertical;
 
     protected static string|\UnitEnum|null $navigationGroup = 'Jacket';
 

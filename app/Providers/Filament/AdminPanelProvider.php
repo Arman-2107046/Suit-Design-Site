@@ -6,7 +6,8 @@ use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
-use Filament\Pages\Dashboard;
+use App\Filament\NavigationGroups;
+use App\Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
@@ -28,6 +29,9 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
+            /* Administrators sign in against the admins table only; customer accounts cannot. */
+            ->authGuard('admin')
+            ->authPasswordBroker('admins')
             ->login()
             ->darkMode(false)
             /* Navigating swaps the body instead of unloading the document, so a bulk
@@ -36,7 +40,9 @@ class AdminPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Blue,
             ])
-            ->navigationGroups(['Sales', 'Fabrics', 'Jacket', 'Lapels', 'Pockets', 'Linings', 'Journal', 'Content', 'Support'])
+            /* Every group starts closed, so the sidebar reads as a short list of cards; a click opens one. */
+            ->navigationGroups(NavigationGroups::all())
+            ->renderHook(PanelsRenderHook::HEAD_END, fn (): string => view('filament.partials.sidebar-groups')->render())
             ->renderHook(PanelsRenderHook::STYLES_AFTER, fn (): string => view('filament.partials.bulk-upload-nav')->render())
             ->renderHook(PanelsRenderHook::BODY_END, fn (): string => view('filament.partials.bulk-upload-dock')->render())
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
@@ -59,8 +65,9 @@ class AdminPanelProvider extends PanelProvider
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
             ])
+            /* Persistent, so Livewire's own requests are also checked against the admin guard. */
             ->authMiddleware([
                 Authenticate::class,
-            ]);
+            ], isPersistent: true);
     }
 }

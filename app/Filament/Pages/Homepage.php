@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Concerns\SuperAdminOnly;
 use App\Filament\Forms\Components\StreamVideoUpload;
 use App\Services\Cloudflare\CloudflareStream;
 use App\Models\HomepageSetting;
@@ -22,6 +23,8 @@ use Illuminate\Support\Facades\Storage;
  */
 class Homepage extends Page
 {
+    use SuperAdminOnly;
+
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-home';
 
     protected static ?string $navigationLabel = 'Homepage';

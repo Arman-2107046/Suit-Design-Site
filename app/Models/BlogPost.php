@@ -15,7 +15,7 @@ class BlogPost extends Model
     public const STATUSES = ['draft' => 'Draft', 'published' => 'Published'];
 
     protected $fillable = [
-        'user_id', 'blog_category_id', 'title', 'slug', 'excerpt', 'cover_image', 'cover_image_url', 'cover_caption',
+        'admin_id', 'blog_category_id', 'title', 'slug', 'excerpt', 'cover_image', 'cover_image_url', 'cover_caption',
         'body', 'tags', 'status', 'published_at', 'is_featured', 'reading_minutes', 'seo_title', 'seo_description', 'views',
     ];
 
@@ -57,7 +57,7 @@ class BlogPost extends Model
 
     public function author(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'user_id');
+        return $this->belongsTo(Admin::class, 'admin_id');
     }
 
     public function category(): BelongsTo

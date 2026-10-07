@@ -18,7 +18,7 @@ class SleeveTypeResource extends Resource
 {
     protected static ?string $model = SleeveType::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedAdjustmentsHorizontal;
 
     protected static string|\UnitEnum|null $navigationGroup = 'Jacket';
 

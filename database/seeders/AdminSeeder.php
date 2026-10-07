@@ -2,23 +2,27 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
+use App\Enums\AdminRole;
+use App\Models\Admin;
 use Illuminate\Database\Seeder;
 
 class AdminSeeder extends Seeder
 {
     /**
-     * Run the database seeds.
+     * The first super admin, for a fresh install. Administrators are their own
+     * accounts (App\Models\Admin), not customer users. An existing account is
+     * left exactly as it is, password included.
      */
     public function run(): void
     {
-        User::updateOrCreate(
+        Admin::firstOrCreate(
             [
                 'email' => 'armanr.rafi@gmail.com',
             ],
             [
                 'name' => 'Arman',
                 'password' => 'arman007',
+                'role' => AdminRole::SuperAdmin,
             ]
         );
     }

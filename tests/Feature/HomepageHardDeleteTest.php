@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use App\Filament\Pages\Homepage;
 use App\Models\HomepageSetting;
-use App\Models\User;
+use App\Models\Admin;
 use Filament\Actions\Testing\TestAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -28,7 +28,7 @@ class HomepageHardDeleteTest extends TestCase
         /* The files are gone, as they are on the disabled Cloudinary account */
         Http::fake(['api.cloudflare.com/*' => Http::response(['success' => false], 404)]);
 
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(Admin::factory()->superAdmin()->create(), 'admin');
 
         HomepageSetting::current()->update([
             'hero_image' => 'homepage/01DEADHERO.png',

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Concerns\SuperAdminOnly;
 use App\Models\SiteSetting;
 use Filament\Actions\Action;
 use Filament\Forms\Components\FileUpload;
@@ -20,7 +21,9 @@ use Filament\Schemas\Schema;
  */
 class SupportSettings extends Page
 {
-    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-lifebuoy';
+    use SuperAdminOnly;
+
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-cog-6-tooth';
 
     protected static ?string $navigationLabel = 'Support settings';
 

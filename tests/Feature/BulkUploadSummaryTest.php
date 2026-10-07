@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Fabric;
-use App\Models\User;
+use App\Models\Admin;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -13,7 +13,7 @@ class BulkUploadSummaryTest extends TestCase
 
     private function file(array $files): array
     {
-        return $this->actingAs(User::factory()->create())
+        return $this->actingAs(Admin::factory()->create(), 'admin')
             ->postJson(route('admin.bulk-upload.process'), ['files' => $files])
             ->assertOk()
             ->json();

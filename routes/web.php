@@ -54,7 +54,8 @@ Route::get('/journal/{post}', [JournalController::class, 'show'])->name('journal
 Route::post('/journal/{post}/comments', [JournalController::class, 'comment'])->middleware('throttle:10,1')->name('journal.comment');
 Route::post('/journal/{post}/like', [JournalController::class, 'like'])->middleware('throttle:60,1')->name('journal.like');
 
-Route::middleware('auth')->group(function () {
+/* The admin panel's own endpoints: administrators only, never a signed-in customer. */
+Route::middleware('auth:admin')->group(function () {
     /* One-time Cloudflare upload addresses, so the browser can upload without holding the API token. */
     Route::post('/admin/uploads/image', [CloudflareUploadController::class, 'image'])
         ->middleware('throttle:900,1')
@@ -76,7 +77,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/admin/bulk-upload/report', BulkUploadReportController::class)
         ->middleware('throttle:20,1')
         ->name('admin.bulk-upload.report');
+});
 
+Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');

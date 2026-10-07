@@ -18,7 +18,7 @@ class LapelSubcategoryResource extends Resource
 {
     protected static ?string $model = LapelSubCategory::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedFolder;
 
     protected static string|\UnitEnum|null $navigationGroup = 'Lapels';
 

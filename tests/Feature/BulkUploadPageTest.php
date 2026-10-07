@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Models\User;
+use App\Models\Admin;
 use App\Services\BulkUploadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -13,7 +13,7 @@ class BulkUploadPageTest extends TestCase
 
     public function test_the_uploader_renders_with_the_filing_order_and_no_time_estimate(): void
     {
-        $html = $this->actingAs(User::factory()->create())
+        $html = $this->actingAs(Admin::factory()->create(), 'admin')
             ->get('/admin/bulk-upload')
             ->assertOk()
             ->getContent();

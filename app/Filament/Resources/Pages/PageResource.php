@@ -29,7 +29,7 @@ class PageResource extends Resource
 {
     protected static ?string $model = Page::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedDocumentText;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedDocumentDuplicate;
 
     protected static string|\UnitEnum|null $navigationGroup = 'Content';
 

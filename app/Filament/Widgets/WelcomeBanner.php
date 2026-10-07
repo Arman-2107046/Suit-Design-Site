@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use Filament\Facades\Filament;
 use App\Enums\OrderStatus;
 use App\Models\ContactMessage;
 use App\Models\Order;
@@ -34,7 +35,7 @@ class WelcomeBanner extends Widget
 
         return [
             'greeting' => $greeting,
-            'name' => str(auth()->user()?->name ?? 'there')->before(' '),
+            'name' => str(Filament::auth()->user()?->name ?? 'there')->before(' '),
             'date' => now()->format('l, j F'),
             'todo' => $todo,
             'inProduction' => $inProduction,

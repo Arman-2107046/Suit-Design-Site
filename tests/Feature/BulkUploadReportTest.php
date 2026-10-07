@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Models\User;
+use App\Models\Admin;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -23,7 +23,7 @@ class BulkUploadReportTest extends TestCase
 
     public function test_an_admin_gets_a_pdf_of_the_batch_rejections(): void
     {
-        $response = $this->actingAs(User::factory()->create())
+        $response = $this->actingAs(Admin::factory()->create(), 'admin')
             ->postJson(route('admin.bulk-upload.report'), $this->rejects());
 
         $response->assertOk()
@@ -35,7 +35,7 @@ class BulkUploadReportTest extends TestCase
 
     public function test_the_same_batch_comes_back_as_a_csv(): void
     {
-        $response = $this->actingAs(User::factory()->create())
+        $response = $this->actingAs(Admin::factory()->create(), 'admin')
             ->postJson(route('admin.bulk-upload.report'), ['format' => 'csv'] + $this->rejects());
 
         $response->assertOk()
@@ -51,7 +51,7 @@ class BulkUploadReportTest extends TestCase
 
     public function test_a_filename_that_looks_like_a_formula_cannot_run_in_a_spreadsheet(): void
     {
-        $csv = $this->actingAs(User::factory()->create())
+        $csv = $this->actingAs(Admin::factory()->create(), 'admin')
             ->postJson(route('admin.bulk-upload.report'), [
                 'format' => 'csv',
                 'rejected' => [
@@ -73,7 +73,7 @@ class BulkUploadReportTest extends TestCase
 
     public function test_an_empty_batch_has_nothing_to_report(): void
     {
-        $this->actingAs(User::factory()->create())
+        $this->actingAs(Admin::factory()->create(), 'admin')
             ->postJson(route('admin.bulk-upload.report'), ['rejected' => []])
             ->assertStatus(422);
     }
