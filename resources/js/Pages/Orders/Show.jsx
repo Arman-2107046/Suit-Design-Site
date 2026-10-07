@@ -1,7 +1,8 @@
 import StoreLayout from "@/Layouts/StoreLayout";
-import { money } from "@/lib/store";
-import { Head, Link, usePage } from "@inertiajs/react";
-import { ArrowRight, Check, Package, Ruler, Truck } from "lucide-react";
+import { clearCart, money } from "@/lib/store";
+import { Head, Link, router, usePage } from "@inertiajs/react";
+import { ArrowRight, Check, CreditCard, Loader2, Lock, Package, Ruler, Truck } from "lucide-react";
+import { useEffect, useState } from "react";
 import { resizeImage as cdn } from "@/lib/media";
 
 const STEPS = ["Bag", "Body profile", "Delivery & payment", "Done"];
@@ -9,7 +10,7 @@ const STEPS = ["Bag", "Body profile", "Delivery & payment", "Done"];
 
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }) : null);
 
-const PAYMENT_LABEL = { cash_on_delivery: "Pay on delivery", bank_transfer: "Bank transfer" };
+const PAYMENT_LABEL = { card: "Card", cash_on_delivery: "Pay on delivery", bank_transfer: "Bank transfer" };
 
 const Card = ({ className = "", children }) => (
     <div className={`rounded-3xl bg-white shadow-[0_1px_0_rgba(0,0,0,0.04),0_20px_50px_-30px_rgba(0,0,0,0.15)] ${className}`}>{children}</div>
@@ -44,8 +45,64 @@ export const Timeline = ({ order, compact = false }) => {
     );
 };
 
-export default function Show({ order, placed }) {
+/* Where a card payment stands, with a way to finish it */
+const PAYMENT_NOTE = {
+    cancelled: ["Payment not completed", "Your order is saved. Pay whenever you're ready; nothing was charged."],
+    unavailable: ["We couldn't open the payment page", "Your order is saved. Please try again in a moment."],
+    failed: ["The payment didn't go through", "Nothing was charged. You can try again with the same or another card."],
+    pending: ["Waiting for payment", "Your order is saved and starts as soon as payment is complete."],
+};
+
+const PaymentBanner = ({ order, payment, canPay }) => {
+    const [paying, setPaying] = useState(false);
+
+    if (order.payment_method !== "card" || order.payment_status === "paid" || order.payment_status === "refunded") return null;
+
+    if (payment === "processing") {
+        return (
+            <Card className="mt-8 flex items-start gap-4 p-6 animate-slide-up">
+                <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-gray-500" />
+                <div>
+                    <p className="text-[15px] font-medium">Confirming your payment</p>
+                    <p className="mt-1 text-sm text-gray-500">Stripe is finishing up. We'll email you the moment it's confirmed; there's no need to pay again.</p>
+                </div>
+            </Card>
+        );
+    }
+
+    const [title, body] = PAYMENT_NOTE[payment] ?? PAYMENT_NOTE[order.payment_status] ?? PAYMENT_NOTE.pending;
+
+    return (
+        <Card className="mt-8 flex flex-wrap items-center justify-between gap-5 p-6 animate-slide-up">
+            <div className="flex items-start gap-4">
+                <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-gray-700" strokeWidth={1.5} />
+                <div>
+                    <p className="text-[15px] font-medium">{title}</p>
+                    <p className="mt-1 max-w-lg text-sm text-gray-500">{body}</p>
+                </div>
+            </div>
+            {canPay && (
+                <button
+                    type="button"
+                    disabled={paying}
+                    onClick={() => router.post(route("orders.pay", order.number), {}, { onStart: () => setPaying(true), onFinish: () => setPaying(false) })}
+                    className="btn-ink justify-center bg-gray-900 px-6 py-3.5 text-white hover:bg-gray-700 disabled:opacity-60"
+                >
+                    <Lock className="h-4 w-4" /> {paying ? "Opening secure payment…" : `Pay ${money(order.total)} now`}
+                </button>
+            )}
+        </Card>
+    );
+};
+
+export default function Show({ order, placed, payment = null, canPay = false }) {
     const user = usePage().props.auth?.user ?? null;
+    const awaitingCard = order.payment_method === "card" && order.payment_status !== "paid";
+
+    /* Back from Stripe, paid or not: the order exists now, so the bag that made it is done with */
+    useEffect(() => {
+        if (placed || payment) clearCart();
+    }, [placed, payment]);
 
     return (
         <StoreLayout steps={placed ? STEPS : null} step={3} secure={placed} back={{ href: user ? route("dashboard") : "/", label: user ? "Your atelier" : "Home" }} wide>
@@ -60,15 +117,17 @@ export default function Show({ order, placed }) {
                 <div className="mt-4 flex flex-wrap items-end justify-between gap-6">
                     <div>
                         <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-gray-400">Order {order.number}</p>
-                        <h1 className="mt-2 text-4xl font-light tracking-tight sm:text-5xl">{placed ? "Thank you. It's in our hands now." : order.status.label}</h1>
+                        <h1 className="mt-2 text-4xl font-light tracking-tight sm:text-5xl">{awaitingCard ? "One last step: payment." : placed ? "Thank you. It's in our hands now." : order.status.label}</h1>
                         <p className="mt-3 max-w-xl text-[15px] text-gray-500">
-                            {placed ? `A confirmation is on its way to ${order.shipping.name}. ` : ""}
+                            {placed && !awaitingCard ? `A confirmation is on its way to ${order.shipping.name}. ` : ""}
                             {order.status.description}
                         </p>
                     </div>
                     <p className="text-sm text-gray-500">Placed {fmtDate(order.placed_at)}</p>
                 </div>
             </div>
+
+            <PaymentBanner order={order} payment={payment} canPay={canPay} />
 
             <Card className="mt-10 p-7 animate-slide-up [animation-delay:80ms]">
                 <Timeline order={order} />

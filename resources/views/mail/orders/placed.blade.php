@@ -19,8 +19,10 @@ Your order **{{ $order->number }}** is in our hands. We will review your measure
 
 **Body profile** — {{ $order->body_profile['name'] }}: {{ $order->body_profile['height_cm'] }} cm · {{ $order->body_profile['weight_kg'] }} kg · {{ $order->body_profile['age'] }} years
 
-**Payment** — {{ str($order->payment_method)->replace('_', ' ')->ucfirst() }}
-@if ($order->payment_method === 'bank_transfer')
+**Payment** — {{ $order->payment_method === 'card' ? 'Card' : str($order->payment_method)->replace('_', ' ')->ucfirst() }}
+@if ($order->payment_method === 'card')
+Paid in full by card, thank you. Your suit goes into the workroom now.
+@elseif ($order->payment_method === 'bank_transfer')
 Production begins once your transfer clears. We will send bank details in a separate email.
 @else
 Nothing to pay now. You pay when your suit arrives.

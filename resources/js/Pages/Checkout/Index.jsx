@@ -2,7 +2,7 @@ import InputError from "@/Components/InputError";
 import StoreLayout from "@/Layouts/StoreLayout";
 import { cartSubtotal, clearCart, money, useBodyProfile, useCart } from "@/lib/store";
 import { Head, Link, useForm, usePage } from "@inertiajs/react";
-import { ArrowRight, Banknote, Check, ChevronUp, Landmark, Lock, Pencil, Ruler, ShoppingBag } from "lucide-react";
+import { ArrowRight, Banknote, Check, ChevronUp, CreditCard, Landmark, Lock, Pencil, Ruler, ShoppingBag } from "lucide-react";
 import { useEffect, useState } from "react";
 import { resizeImage as cdn } from "@/lib/media";
 
@@ -15,6 +15,7 @@ const COUNTRIES = [
 ];
 
 const PAYMENT = {
+    card: { icon: CreditCard, title: "Card", body: "Visa, Mastercard, American Express, Apple Pay or Google Pay, on Stripe's secure page." },
     cash_on_delivery: { icon: Banknote, title: "Pay on delivery", body: "Pay in cash or by card when your suit arrives." },
     bank_transfer: { icon: Landmark, title: "Bank transfer", body: "We email you our bank details; production starts once the transfer clears." },
 };
@@ -57,7 +58,7 @@ export default function Checkout({ profiles, paymentMethods }) {
     const form = useForm({
         email: user?.email ?? "",
         shipping: { name: user?.name ?? "", phone: "", address: "", address2: "", city: "", postcode: "", country: "" },
-        payment_method: "cash_on_delivery",
+        payment_method: paymentMethods[0] ?? "cash_on_delivery",
         notes: "",
         items: [],
         body_profile: null,
@@ -225,9 +226,15 @@ export default function Checkout({ profiles, paymentMethods }) {
                                         );
                                     })}
                                     <InputError message={err("payment_method")} />
-                                    <p className="pt-2 text-xs text-gray-500">Card payments will be available soon. Nothing is charged until your order is confirmed.</p>
+                                    <p className="pt-2 text-xs text-gray-500">
+                                        {form.data.payment_method === "card"
+                                            ? "You'll pay on Stripe's secure page and come straight back here. We never see your card details."
+                                            : "Nothing is charged until your order is confirmed."}
+                                    </p>
                                     <button type="submit" disabled={form.processing} className="btn-ink mt-4 w-full justify-center bg-gray-900 py-4 text-white hover:bg-gray-700 disabled:opacity-60 sm:w-auto">
-                                        <Lock className="h-4 w-4" /> {form.processing ? "Placing your order…" : `Place order · ${money(subtotal)}`}
+                                        <Lock className="h-4 w-4" /> {form.processing
+                                            ? (form.data.payment_method === "card" ? "Opening secure payment…" : "Placing your order…")
+                                            : (form.data.payment_method === "card" ? `Continue to payment · ${money(subtotal)}` : `Place order · ${money(subtotal)}`)}
                                     </button>
                                 </div>
                             )}

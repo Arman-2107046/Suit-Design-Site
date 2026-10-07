@@ -7,6 +7,7 @@ use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\JournalController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\StripeCheckoutController;
 use App\Http\Controllers\SupportController;
 use App\Models\BlogPost;
 use App\Models\HomepageSetting;
@@ -38,6 +39,11 @@ Route::post('/checkout/body-profile', [CheckoutController::class, 'storeBodyProf
 Route::get('/checkout', [CheckoutController::class, 'index'])->name('checkout');
 Route::post('/checkout', [CheckoutController::class, 'store'])->name('checkout.store');
 Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
+
+/* Card payments: back from Stripe's page, paid or cancelled, and paying again from the order page */
+Route::get('/checkout/stripe/{order}/success', [StripeCheckoutController::class, 'success'])->name('checkout.stripe.success');
+Route::get('/checkout/stripe/{order}/cancel', [StripeCheckoutController::class, 'cancel'])->name('checkout.stripe.cancel');
+Route::post('/orders/{order}/pay', [StripeCheckoutController::class, 'pay'])->middleware('throttle:10,1')->name('orders.pay');
 
 Route::get('/contact', [SupportController::class, 'contact'])->name('contact');
 Route::post('/contact', [SupportController::class, 'sendMessage'])->middleware('throttle:10,1')->name('contact.send');

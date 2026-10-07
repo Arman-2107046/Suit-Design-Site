@@ -3,23 +3,36 @@
 namespace App\Http\Controllers;
 
 use App\Enums\OrderStatus;
-use App\Mail\OrderPlaced;
 use App\Models\BodyProfile;
 use App\Models\Fabric;
 use App\Models\Order;
+use App\Services\Payments\OrderPayments;
+use App\Services\Payments\StripeGateway;
 use App\Support\BodyEstimator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\Response as HttpResponse;
+use Throwable;
 
 class CheckoutController extends Controller
 {
     public const PAYMENT_METHODS = ['cash_on_delivery', 'bank_transfer'];
+
+    public function __construct(
+        private readonly StripeGateway $stripe,
+        private readonly OrderPayments $payments,
+    ) {}
+
+    /** Card first when Stripe is set up; otherwise the offline methods alone. */
+    public function paymentMethods(): array
+    {
+        return $this->stripe->enabled() ? [OrderPayments::CARD, ...self::PAYMENT_METHODS] : self::PAYMENT_METHODS;
+    }
 
     public function cart(): Response
     {
@@ -59,12 +72,12 @@ class CheckoutController extends Controller
     {
         return Inertia::render('Checkout/Index', [
             'profiles' => $this->savedProfiles($request),
-            'paymentMethods' => self::PAYMENT_METHODS,
+            'paymentMethods' => $this->paymentMethods(),
             'fields' => BodyEstimator::FIELDS,
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): HttpResponse
     {
         $data = $request->validate([
             'email' => ['required', 'email', 'max:255'],
@@ -90,7 +103,7 @@ class CheckoutController extends Controller
             'shipping.city' => ['required', 'string', 'max:120'],
             'shipping.postcode' => ['required', 'string', 'max:20'],
             'shipping.country' => ['required', 'string', 'max:80'],
-            'payment_method' => ['required', Rule::in(self::PAYMENT_METHODS)],
+            'payment_method' => ['required', Rule::in($this->paymentMethods())],
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
@@ -130,14 +143,45 @@ class CheckoutController extends Controller
             return $order;
         });
 
-        rescue(fn () => Mail::to($order->email)->send(new OrderPlaced($order)));
-
         // Guests can open the receipt they just placed from this browser session.
         if (! $request->user()) {
             $request->session()->push('guest_orders', $order->id);
         }
 
+        /* Card orders are confirmed by email once Stripe says they are paid, not before */
+        if ($order->payment_method === OrderPayments::CARD) {
+            return $this->startCardPayment($order);
+        }
+
+        $this->payments->sendConfirmation($order);
+
         return redirect()->route('orders.show', $order)->with('placed', true);
+    }
+
+    /**
+     * Send the customer to Stripe's hosted page to pay for an order. Used at
+     * checkout and again from the order page if the first attempt did not go
+     * through. If Stripe cannot be reached, the order is kept and the order
+     * page offers to try again.
+     */
+    public function startCardPayment(Order $order): HttpResponse
+    {
+        try {
+            $session = $this->stripe->createCheckoutSession(
+                $order->loadMissing('items'),
+                route('checkout.stripe.success', $order).'?session_id={CHECKOUT_SESSION_ID}',
+                route('checkout.stripe.cancel', $order),
+            );
+        } catch (Throwable $e) {
+            report($e);
+
+            return redirect()->route('orders.show', $order)->with('payment', 'unavailable');
+        }
+
+        $order->forceFill(['stripe_session_id' => $session['id'], 'payment_status' => 'pending'])->save();
+
+        /* A full-page visit, since Stripe's page is not part of this app */
+        return Inertia::location($session['url']);
     }
 
     /** @return array<int, array<string, mixed>> */

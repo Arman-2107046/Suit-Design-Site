@@ -24,6 +24,7 @@ class Order extends Model
         'shipping' => 'array',
         'body_profile' => 'array',
         'paid_at' => 'datetime',
+        'confirmation_sent' => 'boolean',
         'shipped_at' => 'datetime',
         'delivered_at' => 'datetime',
     ];

@@ -6,6 +6,8 @@ use App\Enums\OrderStatus;
 use App\Filament\Resources\Orders\Pages\ListOrders;
 use App\Filament\Resources\Orders\Pages\ViewOrder;
 use App\Models\Order;
+use App\Services\Payments\OrderPayments;
+use App\Services\Payments\StripeGateway;
 use App\Support\BodyEstimator;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -56,14 +58,15 @@ class OrderResource extends Resource
                     ->description(fn (Order $record) => $record->email),
                 TextColumn::make('items_count')->counts('items')->label('Suits')->alignCenter(),
                 TextColumn::make('total')->money('USD')->sortable(),
-                TextColumn::make('payment_method')->label('Payment')->formatStateUsing(fn (string $state) => str($state)->replace('_', ' ')->ucfirst())
+                TextColumn::make('payment_method')->label('Payment')->formatStateUsing(fn (string $state) => $state === 'card' ? 'Card (Stripe)' : str($state)->replace('_', ' ')->ucfirst())
                     ->description(fn (Order $record) => str($record->payment_status)->ucfirst()),
                 TextColumn::make('status')->badge()->sortable(),
                 TextColumn::make('created_at')->label('Placed')->since()->sortable(),
             ])
             ->filters([
                 SelectFilter::make('status')->options(OrderStatus::class)->multiple(),
-                SelectFilter::make('payment_status')->options(['pending' => 'Pending', 'paid' => 'Paid', 'refunded' => 'Refunded']),
+                SelectFilter::make('payment_status')->options(OrderPayments::STATUSES),
+                SelectFilter::make('payment_method')->label('Payment method')->options(['card' => 'Card (Stripe)', 'cash_on_delivery' => 'Cash on delivery', 'bank_transfer' => 'Bank transfer']),
             ])
             ->recordActions([
                 self::statusAction(),
@@ -92,7 +95,8 @@ class OrderResource extends Resource
             ->fillForm(fn (Order $record) => ['status' => $record->status, 'payment_status' => $record->payment_status, 'notes' => $record->notes])
             ->schema([
                 Select::make('status')->options(OrderStatus::class)->required()->native(false),
-                Select::make('payment_status')->options(['pending' => 'Pending', 'paid' => 'Paid', 'refunded' => 'Refunded'])->required()->native(false),
+                Select::make('payment_status')->options(OrderPayments::STATUSES)->required()->native(false)
+                    ->helperText(fn (Order $record) => $record->payment_method === 'card' ? 'Card payments update themselves from Stripe. Refund in the Stripe dashboard and this changes to Refunded.' : null),
                 Textarea::make('notes')->label('Internal notes')->rows(3),
             ])
             ->action(function (Order $record, array $data) {
@@ -113,8 +117,9 @@ class OrderResource extends Resource
                     TextEntry::make('status')->badge(),
                     TextEntry::make('created_at')->label('Placed')->dateTime(),
                     TextEntry::make('email')->copyable(),
-                    TextEntry::make('payment_method')->label('Payment')->formatStateUsing(fn (string $state) => str($state)->replace('_', ' ')->ucfirst()),
-                    TextEntry::make('payment_status')->badge()->color(fn (string $state) => match ($state) { 'paid' => 'success', 'refunded' => 'danger', default => 'gray' }),
+                    TextEntry::make('payment_method')->label('Payment')->formatStateUsing(fn (string $state) => $state === 'card' ? 'Card (Stripe)' : str($state)->replace('_', ' ')->ucfirst()),
+                    TextEntry::make('payment_status')->badge()->formatStateUsing(fn (string $state) => OrderPayments::STATUSES[$state] ?? $state)
+                        ->color(fn (string $state) => match ($state) { 'paid' => 'success', 'refunded' => 'warning', 'failed' => 'danger', default => 'gray' }),
                     TextEntry::make('total')->money('USD')->weight('bold'),
                     TextEntry::make('shipped_at')->dateTime()->placeholder('—'),
                     TextEntry::make('delivered_at')->dateTime()->placeholder('—'),
@@ -160,5 +165,17 @@ class OrderResource extends Resource
             'index' => ListOrders::route('/'),
             'view' => ViewOrder::route('/{record}'),
         ];
+    }
+
+    /** Open this order's payment in the Stripe dashboard. */
+    public static function stripeAction(): Action
+    {
+        return Action::make('stripe')
+            ->label('View in Stripe')
+            ->icon(Heroicon::OutlinedArrowTopRightOnSquare)
+            ->color('gray')
+            ->url(fn (Order $record) => app(StripeGateway::class)->dashboardUrl($record->stripe_payment_intent_id))
+            ->openUrlInNewTab()
+            ->visible(fn (Order $record) => filled($record->stripe_payment_intent_id));
     }
 }

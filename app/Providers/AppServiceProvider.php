@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Filesystem\CloudflareImagesAdapter;
 use App\Services\Cloudflare\CloudflareImages;
 use App\Services\Cloudflare\CloudflareStream;
+use App\Services\Payments\StripeGateway;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Vite;
@@ -20,6 +21,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton(CloudflareImages::class, fn () => CloudflareImages::fromConfig());
         $this->app->singleton(CloudflareStream::class, fn () => CloudflareStream::fromConfig());
+        $this->app->singleton(StripeGateway::class, fn () => StripeGateway::fromConfig());
     }
 
     /**

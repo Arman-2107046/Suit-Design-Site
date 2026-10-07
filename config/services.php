@@ -36,6 +36,19 @@ return [
     ],
 
     /*
+    | Card payments. Leave the keys empty and checkout simply does not offer
+    | cards; fill them in and it does. Test keys (pk_test_, sk_test_) take
+    | test cards only, so the whole flow can be tried before going live.
+    | The webhook secret (whsec_) comes from the endpoint you add in Stripe:
+    | the admin's Stripe page shows the URL and the events to pick.
+    */
+    'stripe' => [
+        'key' => env('STRIPE_KEY'),
+        'secret' => env('STRIPE_SECRET'),
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+    ],
+
+    /*
     | Every image and the homepage video. Images are served from
     | imagedelivery.net/<images_hash>/<id>/<variant>; the hash is not secret —
     | it is part of every public image URL — and differs from the account id.

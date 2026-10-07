@@ -12,6 +12,7 @@ class ViewOrder extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
+            OrderResource::stripeAction(),
             OrderResource::statusAction(),
         ];
     }
