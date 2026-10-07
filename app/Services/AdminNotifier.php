@@ -92,6 +92,20 @@ class AdminNotifier
         );
     }
 
+    public static function brokenImages(int $broken, int $new): void
+    {
+        self::send(
+            Notification::make()
+                ->title($new === $broken
+                    ? "{$broken} ".str('picture')->plural($broken).' no longer '.($broken === 1 ? 'loads' : 'load')
+                    : "{$new} more ".str('picture')->plural($new).' stopped loading')
+                ->body("{$broken} broken in all. Customers may see gaps where they should be.")
+                ->icon('heroicon-o-photo')
+                ->iconColor('danger')
+                ->actions([self::open(\App\Filament\Pages\ImageHealth::getUrl(), 'See which')]),
+        );
+    }
+
     private static function send(Notification $notification): void
     {
         try {

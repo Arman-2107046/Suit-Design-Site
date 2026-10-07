@@ -120,8 +120,8 @@
                 <div class="sp-url">
                     <code>{{ $webhookUrl }}</code>
                     <button type="button" class="sp-copy" x-on:click="navigator.clipboard.writeText(@js($webhookUrl)).then(() => { copied = true; setTimeout(() => copied = false, 1800) })">
-                        <x-filament::icon icon="heroicon-m-clipboard-document" x-show="! copied" />
-                        <x-filament::icon icon="heroicon-m-check" x-show="copied" x-cloak />
+                        <span x-show="! copied" style="display: inline-flex;"><x-filament::icon icon="heroicon-m-clipboard-document" /></span>
+                        <span x-show="copied" x-cloak style="display: inline-flex;"><x-filament::icon icon="heroicon-m-check" /></span>
                         <span x-text="copied ? 'Copied' : 'Copy'">Copy</span>
                     </button>
                 </div>

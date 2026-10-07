@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Sleeves\Pages;
 
+use App\Filament\Pages\DesignPreview;
 use App\Filament\Resources\Sleeves\SleeveResource;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
@@ -13,6 +14,7 @@ class EditSleeve extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
+            DesignPreview::previewAction(),
             DeleteAction::make(),
         ];
     }

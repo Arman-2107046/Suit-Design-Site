@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\BodyButtons\Pages;
 
+use App\Filament\Pages\DesignPreview;
 use App\Filament\Resources\BodyButtons\BodyButtonResource;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
@@ -13,6 +14,7 @@ class EditBodyButton extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
+            DesignPreview::previewAction(),
             DeleteAction::make(),
         ];
     }

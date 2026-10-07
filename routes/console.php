@@ -10,3 +10,6 @@ Artisan::command('inspire', function () {
 
 /* Catch any RankYak article a webhook missed, and report posts that have just gone live. Needs the scheduler (cron) running. */
 Schedule::command('rankyak:sync')->hourly()->withoutOverlapping()->runInBackground();
+
+/* Test every picture overnight; the bell says if more have stopped loading. */
+Schedule::command('images:check')->dailyAt('04:00')->withoutOverlapping()->runInBackground();

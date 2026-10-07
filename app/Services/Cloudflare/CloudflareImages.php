@@ -151,6 +151,52 @@ class CloudflareImages
         return $this->result($response, 'mint upload URL');
     }
 
+    /**
+     * Every image id on the account, so thousands of pictures can be checked
+     * against one list instead of one request each. Drafts (a direct upload
+     * that was started but never finished) are left out: they do not load.
+     *
+     * @return array<string, true> id => true
+     */
+    public function allIds(): array
+    {
+        $ids = [];
+        $token = null;
+
+        do {
+            $response = $this->api()->get($this->endpoint('images/v2'), array_filter([
+                'per_page' => 10000,
+                'continuation_token' => $token,
+            ]));
+
+            $result = $this->result($response, 'list images');
+
+            foreach ($result['images'] ?? [] as $image) {
+                if (! ($image['draft'] ?? false) && isset($image['id'])) {
+                    $ids[$image['id']] = true;
+                }
+            }
+
+            $token = $result['continuation_token'] ?? null;
+        } while (filled($token));
+
+        return $ids;
+    }
+
+    /**
+     * The image id inside one of this account's delivery addresses, or null
+     * when the address belongs to someone else (or is not Cloudflare at all).
+     * imagedelivery.net/<hash>/<id, which may contain slashes>/<variant>
+     */
+    public function idFromUrl(string $url): ?string
+    {
+        if (blank($this->hash) || ! preg_match('~^https://imagedelivery\.net/([^/]+)/(.+)/[^/]+$~', $url, $m) || $m[1] !== $this->hash) {
+            return null;
+        }
+
+        return implode('/', array_map('rawurldecode', explode('/', $m[2])));
+    }
+
     public function exists(string $id): bool
     {
         return $this->api()->get($this->endpoint('images/v1/'.$this->encodeId($id)))->successful();
