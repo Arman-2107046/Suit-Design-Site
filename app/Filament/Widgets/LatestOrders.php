@@ -10,7 +10,7 @@ use Filament\Widgets\TableWidget;
 
 class LatestOrders extends TableWidget
 {
-    protected static ?int $sort = 4;
+    protected static ?int $sort = 7;
 
     protected int | string | array $columnSpan = 'full';
 
