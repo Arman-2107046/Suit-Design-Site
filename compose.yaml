@@ -6,6 +6,9 @@
 # Stop with "docker compose down"; the database is kept between runs.
 # Setup notes, and how the first start imports your data: docker/README.md
 
+# Containers and storage are named custom-tailor-*, whatever the folder is called.
+name: custom-tailor
+
 x-app: &app
   build:
     context: .
@@ -47,7 +50,8 @@ services:
       test: ["CMD", "curl", "-fs", "http://localhost:8080/up"]
       interval: 15s
       timeout: 5s
-      start_period: 120s
+      # A first start installs ~170 PHP packages, which can take several minutes
+      start_period: 600s
       retries: 5
 
   # The nightly image check and the hourly RankYak sync (Laravel's scheduler).

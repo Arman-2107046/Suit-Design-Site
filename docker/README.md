@@ -56,7 +56,7 @@ To start over from that file (this **erases** the Docker database):
 
 ```bash
 docker compose down
-docker volume rm hockerty-premium_db
+docker volume rm custom-tailor_db
 docker compose up -d
 ```
 
