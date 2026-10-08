@@ -66,6 +66,8 @@ class AdminPanelProvider extends PanelProvider
             /* Navigating swaps the body instead of unloading the document, so a bulk
                upload in flight survives the admin moving to another menu. */
             ->spa()
+            /* A download is not a page: SPA navigation would try to show the PDF instead of saving it. */
+            ->spaUrlExceptions(['*/admin/bulk-upload/naming-guide'])
             /* The brand: navy, Figtree (the shop's own font), and the CT monogram */
             ->colors([
                 'primary' => self::NAVY,

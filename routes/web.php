@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\BulkUploadProcessController;
+use App\Http\Controllers\Admin\BulkUploadNamingGuideController;
 use App\Http\Controllers\Admin\BulkUploadReportController;
 use App\Http\Controllers\Admin\CloudflareUploadController;
 use App\Http\Controllers\CheckoutController;
@@ -83,6 +84,11 @@ Route::middleware('auth:admin')->group(function () {
     Route::post('/admin/bulk-upload/report', BulkUploadReportController::class)
         ->middleware('throttle:20,1')
         ->name('admin.bulk-upload.report');
+
+    /* The filename rules, as a PDF to keep or send on. */
+    Route::get('/admin/bulk-upload/naming-guide', BulkUploadNamingGuideController::class)
+        ->middleware('throttle:20,1')
+        ->name('admin.bulk-upload.naming-guide');
 });
 
 Route::middleware('auth')->group(function () {

@@ -17,6 +17,34 @@
 
 
 
+    {{-- Every filename rule, opened with a click; the PDF is the same list to print or send to whoever exports the renders --}}
+    <x-filament::section collapsible collapsed>
+
+        <x-slot name="heading">
+            Naming conventions
+        </x-slot>
+
+        <x-slot name="description">
+            How to name each file so it lands in the right place.
+        </x-slot>
+
+        <x-slot name="afterHeader">
+            <x-filament::link
+                :href="route('admin.bulk-upload.naming-guide')"
+                icon="heroicon-m-arrow-down-tray"
+                size="sm"
+                x-on:click.stop
+            >
+                Download PDF
+            </x-filament::link>
+        </x-slot>
+
+        @include('filament.pages.partials.naming-guide')
+
+    </x-filament::section>
+
+
+
     <x-filament::section>
 
 
