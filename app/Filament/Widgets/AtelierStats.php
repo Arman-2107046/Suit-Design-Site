@@ -58,7 +58,7 @@ class AtelierStats extends StatsOverviewWidget
             Stat::make('Inbox', (string) (ContactMessage::where('status', 'new')->count() + SampleRequest::where('status', 'requested')->count()))
                 ->description(ContactMessage::where('status', 'new')->count() . ' messages · ' . SampleRequest::where('status', 'requested')->count() . ' sample requests')
                 ->descriptionIcon('heroicon-m-envelope')
-                ->color('info'),
+                ->color('primary'),
         ];
     }
 

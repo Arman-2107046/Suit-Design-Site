@@ -11,7 +11,6 @@ use App\Filament\Support\AdminSearchProvider;
 use App\Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
-use Filament\Support\Colors\Color;
 use Filament\View\PanelsRenderHook;
 use Filament\Widgets\AccountWidget;
 use Filament\Widgets\FilamentInfoWidget;
@@ -24,6 +23,25 @@ use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 class AdminPanelProvider extends PanelProvider
 {
+    /**
+     * The brand navy, shade by shade. Filament's generator evens out lightness,
+     * which turned this into a bright mid-blue, so the shades are set by hand:
+     * 600 is what buttons and active items wear.
+     */
+    private const NAVY = [
+        50 => 'oklch(0.97 0.012 262)',
+        100 => 'oklch(0.94 0.026 262)',
+        200 => 'oklch(0.88 0.046 262)',
+        300 => 'oklch(0.79 0.072 262)',
+        400 => 'oklch(0.67 0.1 262)',
+        500 => 'oklch(0.55 0.12 262)',
+        600 => 'oklch(0.44 0.12 262)',
+        700 => 'oklch(0.38 0.11 262)',
+        800 => 'oklch(0.32 0.092 262)',
+        900 => 'oklch(0.27 0.075 262)',
+        950 => 'oklch(0.21 0.055 262)',
+    ];
+
     public function panel(Panel $panel): Panel
     {
         return $panel
@@ -46,9 +64,15 @@ class AdminPanelProvider extends PanelProvider
             /* Navigating swaps the body instead of unloading the document, so a bulk
                upload in flight survives the admin moving to another menu. */
             ->spa()
+            /* The brand: navy, Figtree (the shop's own font), and the CT monogram */
             ->colors([
-                'primary' => Color::Blue,
+                'primary' => self::NAVY,
             ])
+            ->font('Figtree')
+            ->brandName('Custom Tailor')
+            ->brandLogo(fn () => view('filament.partials.brand-logo'))
+            ->brandLogoHeight('2.1rem')
+            ->favicon(asset('favicon.svg'))
             /* Every group starts closed, so the sidebar reads as a short list of cards; a click opens one. */
             ->navigationGroups(NavigationGroups::all())
             ->renderHook(PanelsRenderHook::HEAD_END, fn (): string => view('filament.partials.sidebar-groups')->render())

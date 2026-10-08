@@ -22,7 +22,7 @@
             .ra-time { font-size: 12px; color: #94a3b8; white-space: nowrap; }
 
             .ra-tone-success { background: #ecfdf5; color: #059669; }
-            .ra-tone-info { background: #eff6ff; color: #2563eb; }
+            .ra-tone-info { background: var(--primary-50); color: var(--primary-600); }
             .ra-tone-danger { background: #fef2f2; color: #dc2626; }
             .ra-tone-primary { background: #eef2ff; color: #4f46e5; }
             .ra-tone-warning { background: #fffbeb; color: #d97706; }

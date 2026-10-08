@@ -26,7 +26,7 @@
 
     .dp-list { margin: 0; padding: 6px 0; list-style: none; border-top: 1px solid #f1f5f9; }
     .dp-row { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 16px; }
-    .dp-row.focus { background: #eff6ff; box-shadow: inset 3px 0 0 #2563eb; }
+    .dp-row.focus { background: var(--primary-50); box-shadow: inset 3px 0 0 var(--primary-600); }
     .dp-row.broken { background: #fef2f2; box-shadow: inset 3px 0 0 #dc2626; }
     .dp-z { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 8px; background: #f1f5f9; font-size: 11px; font-weight: 650; color: #475569; font-variant-numeric: tabular-nums; }
     .dp-name { font-size: 13px; font-weight: 600; color: #0f172a; }
@@ -37,7 +37,7 @@
     .dp-acts { display: flex; align-items: center; gap: 4px; }
     .dp-acts button, .dp-acts a { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border: 0; border-radius: 8px; background: none; font-size: 12px; font-weight: 600; color: #64748b; text-decoration: none; cursor: pointer; }
     .dp-acts button:hover, .dp-acts a:hover { background: #f1f5f9; color: #0f172a; }
-    .dp-acts .on { color: #2563eb; }
+    .dp-acts .on { color: var(--primary-600); }
     .dp-acts svg { width: 15px; height: 15px; }
     .dp-off .dp-name, .dp-off .dp-sub { opacity: 0.45; }
 
@@ -51,12 +51,12 @@
     .dark .dp-stage.bg-grid { background-color: #27272a; background-image: linear-gradient(45deg, #3f3f46 25%, transparent 25%), linear-gradient(-45deg, #3f3f46 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #3f3f46 75%), linear-gradient(-45deg, transparent 75%, #3f3f46 75%); }
     .dark .dp-z { background: rgba(255, 255, 255, 0.06); color: #a1a1aa; }
     .dark .dp-sub { color: #a1a1aa; }
-    .dark .dp-row.focus { background: rgba(59, 130, 246, 0.12); }
+    .dark .dp-row.focus { background: color-mix(in oklab, var(--primary-500) 12%, transparent); }
     .dark .dp-row.broken { background: rgba(239, 68, 68, 0.12); }
     .dark .dp-tag-hidden { background: rgba(255, 255, 255, 0.06); color: #a1a1aa; }
     .dark .dp-tag-broken { background: rgba(239, 68, 68, 0.16); color: #fca5a5; }
     .dark .dp-acts button:hover, .dark .dp-acts a:hover { background: rgba(255, 255, 255, 0.06); color: #f4f4f5; }
-    .dark .dp-acts .on { color: #60a5fa; }
+    .dark .dp-acts .on { color: var(--primary-400); }
 </style>
 
 <div

@@ -13,7 +13,7 @@
     .ry { display: grid; gap: 16px; color: #0f172a; }
     .ry-card { border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); overflow: hidden; }
     .ry-hero { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; padding: 20px 22px; background: linear-gradient(180deg, #f8fafc, #fff); }
-    .ry-mark { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; background: #eff6ff; color: #2563eb; box-shadow: inset 0 0 0 1px #dbeafe; }
+    .ry-mark { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; background: var(--primary-50); color: var(--primary-600); box-shadow: inset 0 0 0 1px var(--primary-100); }
     .ry-mark svg { width: 22px; height: 22px; }
     .ry-title { font-size: 15px; font-weight: 650; }
     .ry-sub { margin-top: 2px; font-size: 13px; color: #64748b; }
@@ -32,8 +32,8 @@
     .ry-label { font-size: 13px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .ry-url { display: flex; align-items: stretch; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; overflow: hidden; }
     .ry-url code { flex: 1; min-width: 0; padding: 11px 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: #1e293b; white-space: nowrap; overflow-x: auto; }
-    .ry-copy { display: inline-flex; align-items: center; gap: 6px; padding: 0 16px; border: 0; border-left: 1px solid #e2e8f0; background: #fff; font-size: 13px; font-weight: 600; color: #2563eb; cursor: pointer; transition: background 0.15s ease; }
-    .ry-copy:hover { background: #eff6ff; }
+    .ry-copy { display: inline-flex; align-items: center; gap: 6px; padding: 0 16px; border: 0; border-left: 1px solid #e2e8f0; background: #fff; font-size: 13px; font-weight: 600; color: var(--primary-600); cursor: pointer; transition: background 0.15s ease; }
+    .ry-copy:hover { background: var(--primary-50); }
     .ry-copy svg { width: 15px; height: 15px; }
     .ry-hint { font-size: 12px; font-weight: 500; color: #94a3b8; }
     .ry-note { margin-top: 8px; font-size: 12.5px; color: #64748b; }
@@ -45,7 +45,7 @@
     @media (max-width: 640px) { .ry-steps { grid-template-columns: 1fr; } }
     .ry-step { padding: 12px 14px; border-radius: 12px; background: #f8fafc; box-shadow: inset 0 0 0 1px #eef2f6; }
     .ry-step b { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-    .ry-step b span { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 999px; background: #2563eb; color: #fff; font-size: 11px; }
+    .ry-step b span { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 999px; background: var(--primary-600); color: #fff; font-size: 11px; }
     .ry-step p { margin: 6px 0 0; font-size: 12.5px; line-height: 1.5; color: #64748b; }
 </style>
 

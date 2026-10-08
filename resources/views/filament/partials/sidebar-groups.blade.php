@@ -22,8 +22,8 @@
 @endphp
 <style>
     .fi-sidebar-nav {
-        --nav-ink: #2563eb;          /* the one strong colour, where you are: the panel's own blue */
-        --nav-ink-text: #1d4ed8;
+        --nav-ink: var(--primary-600);          /* the one strong colour, where you are: the brand navy */
+        --nav-ink-text: var(--primary-700);
         --nav-text: #334155;
         --nav-muted: #64748b;
         --nav-line: #e2e8f0;
@@ -81,7 +81,7 @@
     .fi-sidebar-group.fi-active .fi-sidebar-group-label { color: var(--nav-ink-text); }
     .fi-sidebar-group.fi-active .fi-sidebar-group-label::before {
         background: var(--grp-icon-active) center / 16px no-repeat, var(--nav-ink);
-        box-shadow: 0 4px 10px -4px rgba(37, 99, 235, 0.45);
+        box-shadow: 0 4px 10px -4px color-mix(in oklab, var(--primary-600) 45%, transparent);
     }
     .fi-sidebar-group.fi-active > .fi-sidebar-group-btn::before {
         content: "";
@@ -137,8 +137,8 @@
 
     /* The page you are on: a blue chip, a blue edge, the name in full weight */
     .fi-sidebar-group:has(> .fi-sidebar-group-btn) .fi-sidebar-item.fi-active > .fi-sidebar-item-btn {
-        background: #f5f9ff;
-        box-shadow: inset 0 0 0 1px #bfdbfe, 0 4px 12px -8px rgba(37, 99, 235, 0.3);
+        background: var(--primary-50);
+        box-shadow: inset 0 0 0 1px var(--primary-200), 0 4px 12px -8px color-mix(in oklab, var(--primary-600) 30%, transparent);
     }
     .fi-sidebar-group:has(> .fi-sidebar-group-btn) .fi-sidebar-item.fi-active > .fi-sidebar-item-btn > .fi-icon {
         color: #fff;

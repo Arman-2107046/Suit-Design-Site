@@ -18,7 +18,7 @@
     .sp { display: grid; gap: 16px; color: #0f172a; }
     .sp-card { border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); overflow: hidden; }
     .sp-hero { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; padding: 20px 22px; background: linear-gradient(180deg, #f8fafc, #fff); }
-    .sp-mark { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; background: #eff6ff; color: #2563eb; box-shadow: inset 0 0 0 1px #dbeafe; }
+    .sp-mark { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; background: var(--primary-50); color: var(--primary-600); box-shadow: inset 0 0 0 1px var(--primary-100); }
     .sp-mark svg { width: 22px; height: 22px; }
     .sp-title { font-size: 15px; font-weight: 650; }
     .sp-sub { margin-top: 2px; font-size: 13px; color: #64748b; }
@@ -27,7 +27,7 @@
     .sp-pill i { width: 7px; height: 7px; border-radius: 50%; }
     .sp-on { background: #ecfdf5; color: #047857; } .sp-on i { background: #10b981; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18); }
     .sp-off { background: #f1f5f9; color: #475569; } .sp-off i { background: #94a3b8; }
-    .sp-test { background: #fffbeb; color: #92400e; } .sp-live { background: #eff6ff; color: #1d4ed8; }
+    .sp-test { background: #fffbeb; color: #92400e; } .sp-live { background: var(--primary-50); color: var(--primary-700); }
     .sp-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid #f1f5f9; }
     .sp-stat { padding: 12px 22px; border-left: 1px solid #f1f5f9; }
     .sp-stat:first-child { border-left: 0; }
@@ -48,8 +48,8 @@
 
     .sp-url { display: flex; align-items: stretch; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; overflow: hidden; }
     .sp-url code { flex: 1; min-width: 0; padding: 11px 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; white-space: nowrap; overflow-x: auto; }
-    .sp-copy { display: inline-flex; align-items: center; gap: 6px; padding: 0 16px; border: 0; border-left: 1px solid #e2e8f0; background: #fff; font-size: 13px; font-weight: 600; color: #2563eb; cursor: pointer; }
-    .sp-copy:hover { background: #eff6ff; }
+    .sp-copy { display: inline-flex; align-items: center; gap: 6px; padding: 0 16px; border: 0; border-left: 1px solid #e2e8f0; background: #fff; font-size: 13px; font-weight: 600; color: var(--primary-600); cursor: pointer; }
+    .sp-copy:hover { background: var(--primary-50); }
     .sp-copy svg { width: 15px; height: 15px; }
     .sp-events { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
     .sp-events code { padding: 4px 9px; border-radius: 8px; background: #f1f5f9; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #334155; }
@@ -57,14 +57,14 @@
 
     .sp-steps { counter-reset: step; display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
     .sp-steps li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; }
-    .sp-steps li::before { counter-increment: step; content: counter(step); display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 999px; background: #2563eb; color: #fff; font-size: 11px; font-weight: 600; }
+    .sp-steps li::before { counter-increment: step; content: counter(step); display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 999px; background: var(--primary-600); color: #fff; font-size: 11px; font-weight: 600; }
     .sp-steps b { display: block; font-size: 13px; }
     .sp-steps p { margin: 2px 0 0; font-size: 12.5px; line-height: 1.5; color: #64748b; }
 
     .sp-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 14px; padding: 11px 22px; border-top: 1px solid #f8fafc; font-size: 13px; }
     .sp-muted { color: #64748b; }
     .sp-empty { grid-template-columns: 1fr; color: #94a3b8; }
-    .sp-row a { color: #2563eb; font-weight: 600; text-decoration: none; font-size: 12.5px; }
+    .sp-row a { color: var(--primary-600); font-weight: 600; text-decoration: none; font-size: 12.5px; }
     .sp-badge { padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; }
     .sp-paid { background: #ecfdf5; color: #047857; } .sp-pending { background: #f1f5f9; color: #475569; }
     .sp-failed { background: #fef2f2; color: #b91c1c; } .sp-refunded { background: #fff7ed; color: #c2410c; }
