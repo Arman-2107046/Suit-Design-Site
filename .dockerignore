@@ -1,0 +1,4 @@
+# The image only needs the docker/ folder: the project itself is mounted in at runtime.
+*
+!docker/
+docker/initdb/

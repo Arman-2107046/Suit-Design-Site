@@ -9,3 +9,6 @@
 /.github export-ignore
 CHANGELOG.md export-ignore
 .styleci.yml export-ignore
+# Shell scripts run inside Linux containers: keep Unix line endings even on Windows.
+*.sh text eol=lf
+docker/** text eol=lf

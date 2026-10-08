@@ -25,3 +25,8 @@ Homestead.yaml
 Thumbs.db
 app.zip
 build.zip
+
+# Docker: a database dump with customer data, and this machine's own extra certificates
+/docker/initdb/*.sql
+/docker/initdb/*.sql.gz
+/docker/certs/*.crt

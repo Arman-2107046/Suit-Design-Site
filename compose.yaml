@@ -1,0 +1,99 @@
+# Everything the site needs, started with one command:
+#
+#     docker compose up -d
+#
+# then open http://localhost:8080 (shop) and http://localhost:8080/admin.
+# Stop with "docker compose down"; the database is kept between runs.
+# Setup notes, and how the first start imports your data: docker/README.md
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: docker/php/Dockerfile
+  image: customtailor-app
+  volumes:
+    - .:/var/www/html
+    # PHP libraries live in Docker's own storage: read through the Windows folder they
+    # made every page take seconds. Installed into it on first start.
+    - vendor:/var/www/html/vendor
+  # Settings here win over .env, so the same .env still works with Herd/XAMPP.
+  environment: &app-env
+    APP_URL: http://localhost:${APP_PORT:-8080}
+    DB_CONNECTION: mysql
+    DB_HOST: db
+    DB_PORT: 3306
+    DB_DATABASE: ${DB_DATABASE:-customtailor}
+    DB_USERNAME: customtailor
+    DB_PASSWORD: customtailor
+    # Compiled Blade templates in the container's own fast storage rather than the Windows folder
+    VIEW_COMPILED_PATH: /tmp/views
+    PHP_OPCACHE_VALIDATE_TIMESTAMPS: 1
+    # Edited code is picked up within two seconds, without checking every file on every request
+    PHP_OPCACHE_REVALIDATE_FREQ: 2
+  depends_on:
+    db:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  app:
+    <<: *app
+    environment:
+      <<: *app-env
+      PREPARE_APP: "true"
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/up"]
+      interval: 15s
+      timeout: 5s
+      start_period: 120s
+      retries: 5
+
+  # The nightly image check and the hourly RankYak sync (Laravel's scheduler).
+  scheduler:
+    <<: *app
+    command: ["php", "/var/www/html/artisan", "schedule:work"]
+    healthcheck:
+      disable: true
+    depends_on:
+      app:
+        condition: service_healthy
+
+  # Rebuilds the storefront CSS and JavaScript whenever they change.
+  # node_modules lives in its own volume: the Windows one cannot run in Linux.
+  assets:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    command: sh -c "npm ci --no-audit --no-fund && npm run build -- --watch"
+    restart: unless-stopped
+
+  db:
+    image: mariadb:10.11
+    environment:
+      MARIADB_DATABASE: ${DB_DATABASE:-customtailor}
+      MARIADB_USER: customtailor
+      MARIADB_PASSWORD: customtailor
+      MARIADB_ROOT_PASSWORD: root
+    volumes:
+      - db:/var/lib/mysql
+      # On the very first start only, any .sql in docker/initdb is imported.
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    ports:
+      # Reachable from Windows too (HeidiSQL, TablePlus) on 3307, clear of XAMPP's 3306.
+      - "${DB_PORT_HOST:-3307}:3306"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      start_period: 60s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  db:
+  node_modules:
+  vendor:
