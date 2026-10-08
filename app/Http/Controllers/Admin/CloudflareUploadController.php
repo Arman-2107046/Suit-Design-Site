@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Services\Cloudflare\CloudflareImages;
 use App\Services\Cloudflare\CloudflareStream;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Throwable;
 
 /*
@@ -15,10 +17,15 @@ use Throwable;
  */
 class CloudflareUploadController extends Controller
 {
-    /** One image: the bulk uploader asks once per file. */
-    public function image(CloudflareImages $images): JsonResponse
+    /**
+     * One image: the bulk uploader asks once per file. A file it has made sRGB
+     * goes up under an srgb-ready/ id, so the designer shows it as it is.
+     */
+    public function image(Request $request, CloudflareImages $images): JsonResponse
     {
-        return $this->answer(fn () => $images->directUpload());
+        $id = $request->boolean('srgb') ? CloudflareImages::SRGB_READY.Str::uuid() : null;
+
+        return $this->answer(fn () => $images->directUpload($id));
     }
 
     /** The homepage video. */

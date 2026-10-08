@@ -12,13 +12,15 @@ use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 /*
- * Gives every image already on Cloudflare the colour profile it was missing,
- * so renders exported in Adobe RGB stop looking washed out next to the rest.
- * App\Support\ColorProfile explains the problem; uploads are fixed as they
- * happen, and this catches up the images that went up before.
+ * Converts the Adobe RGB images already on Cloudflare to sRGB, with an sRGB
+ * profile, so they stop looking washed out wherever a browser shows them as
+ * they are. App\Support\ColorProfile explains the problem; uploads are
+ * converted as they happen, and this catches up the images that went up before.
+ * Only images that declare Adobe RGB are touched: the designer already
+ * converts the rest of the older renders itself.
  *
- * Cloudflare cannot change an image in place, so a fixed copy goes up under
- * "srgb/<old id>" and the database is pointed at it. The new address also
+ * Cloudflare cannot change an image in place, so a converted copy goes up under
+ * "srgb-ready/<old id>" and the database is pointed at it. The new address also
  * means no browser or CDN keeps showing the faded version from its cache.
  * The originals stay on Cloudflare unless --delete-old is given: another copy
  * of the site (production, a teammate's machine) may still point at them.
@@ -31,13 +33,13 @@ class FixImageColorProfiles extends Command
     use ScansContentColumns;
 
     protected $signature = 'media:fix-color-profiles
-        {--execute : Upload the fixed copies and rewrite the addresses; without it nothing changes}
+        {--execute : Upload the converted copies and rewrite the addresses; without it nothing changes}
         {--limit=0 : Check at most this many images, for a trial run}
         {--delete-old : Also delete each original from Cloudflare once nothing in this database points at it}';
 
-    protected $description = 'Attach the missing Adobe RGB profile to images on Cloudflare so they show their true colours';
+    protected $description = 'Convert Adobe RGB images on Cloudflare to sRGB so they show their true colours';
 
-    private const PREFIX = 'srgb/';
+    private const PREFIX = CloudflareImages::SRGB_READY;
 
     public function handle(CloudflareImages $images): int
     {
@@ -72,15 +74,15 @@ class FixImageColorProfiles extends Command
             foreach ($queue as $id) {
                 try {
                     $original = $images->download($id);
-                    $tagged = ColorProfile::tagAdobeRgb($original);
+                    $converted = ColorProfile::toSrgb($original);
 
-                    if ($tagged === $original) {
+                    if ($converted === $original) {
                         $state[$id] = 'ok';
                     } else {
                         $needing++;
 
                         if ($execute) {
-                            $state[$id] = $this->uploadCopy($images, $tagged, self::PREFIX.$id);
+                            $state[$id] = $this->uploadCopy($images, $converted, self::PREFIX.$id);
                         }
                     }
                 } catch (Throwable $e) {
@@ -102,7 +104,7 @@ class FixImageColorProfiles extends Command
 
         if (! $execute) {
             $this->newLine();
-            $this->line("{$needing} of the images checked are missing their Adobe RGB profile.");
+            $this->line("{$needing} of the images checked are in Adobe RGB and need converting.");
             $this->warn('Dry run — nothing was uploaded or changed.');
             $this->line('Run again with --execute to fix them (add --limit=5 for a short trial first).');
 
@@ -256,7 +258,7 @@ class FixImageColorProfiles extends Command
 
     private function statePath(): string
     {
-        return storage_path('app/color-profile-fix.json');
+        return storage_path('app/color-profile-srgb.json');
     }
 
     /** @return array<string, string> id => "ok", or the id of its fixed copy */

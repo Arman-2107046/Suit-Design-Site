@@ -180,8 +180,15 @@ const imageCache = new ImageCache();
 /*  richer look the tagged layers had, now applied uniformly. The      */
 /*  per-pixel work runs in Web Workers while a change is buffering,    */
 /*  and the converted bitmaps are what the cache keeps.                */
+/*                                                                     */
+/*  Uploads since the switch to sRGB are converted before they reach   */
+/*  Cloudflare and stored under an "srgb-ready/" id (see               */
+/*  App\Support\ColorProfile); those are shown exactly as they are.    */
 /* ------------------------------------------------------------------ */
 const COLOR_PROFILE = "adobe-rgb"; // "adobe-rgb" | "raw"
+
+/* An image whose colours are already sRGB: imagedelivery.net/<hash>/srgb-ready/<id>/<variant> */
+const isSrgbReady = (url) => /^https:\/\/imagedelivery\.net\/[^/]+\/srgb-ready\//.test(url);
 
 const RAW_DECODE = { colorSpaceConversion: "none", premultiplyAlpha: "none" };
 
@@ -278,8 +285,8 @@ class ColorPipeline {
     }
 
     /* Blob | HTMLImageElement -> ImageBitmap in display (sRGB) colour. */
-    async decode(source) {
-        if (this.mode !== "adobe-rgb") return createImageBitmap(source, RAW_DECODE);
+    async decode(source, url = "") {
+        if (this.mode !== "adobe-rgb" || isSrgbReady(url)) return createImageBitmap(source, RAW_DECODE);
 
         if (source instanceof Blob && this.workers.length > 0) {
             try {
@@ -376,7 +383,7 @@ class BitmapCache {
 
         const promise = imageCache
             .load(url)
-            .then((source) => (source ? colorPipeline.decode(source) : null))
+            .then((source) => (source ? colorPipeline.decode(source, url) : null))
             .then((bmp) => {
                 if (bmp) this.put(url, bmp);
                 return bmp;

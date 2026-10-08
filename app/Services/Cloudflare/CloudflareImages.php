@@ -24,6 +24,13 @@ class CloudflareImages
     /** Cloudflare answers this when a custom id is already taken. */
     private const ALREADY_EXISTS = 5409;
 
+    /**
+     * Ids starting with this hold colours already in sRGB. The designer
+     * (Welcome.jsx) shows them as they are; everything older it still converts
+     * from Adobe RGB itself. See App\Support\ColorProfile.
+     */
+    public const SRGB_READY = 'srgb-ready/';
+
     public function __construct(
         private readonly ?string $accountId,
         private readonly ?string $token,

@@ -177,7 +177,7 @@ class CloudflareImagesAdapter implements FilesystemAdapter
 
             $bytes = is_resource($contents) ? stream_get_contents($contents) : $contents;
 
-            $this->images->upload(ColorProfile::tagAdobeRgb($bytes), $path);
+            $this->images->upload(ColorProfile::toSrgb($bytes), $path);
         } catch (Throwable $e) {
             throw UnableToWriteFile::atLocation($path, $e->getMessage(), $e);
         }

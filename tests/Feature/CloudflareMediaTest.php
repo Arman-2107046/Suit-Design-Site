@@ -133,6 +133,24 @@ class CloudflareMediaTest extends TestCase
         $this->assertStringNotContainsString('test-token', $response->getContent());
     }
 
+    public function test_a_file_the_browser_made_srgb_goes_up_under_an_srgb_ready_id(): void
+    {
+        Http::fake([self::API.'images/v2/direct_upload' => Http::response($this->ok([
+            'id' => 'abc', 'uploadURL' => 'https://upload.imagedelivery.net/one-time',
+        ]))]);
+        $admin = Admin::factory()->create();
+
+        $this->actingAs($admin, 'admin')->postJson(route('admin.uploads.image'), ['srgb' => true])->assertOk();
+        Http::assertSent(fn ($r) => preg_match('~srgb-ready/[0-9a-f]{8}-[0-9a-f-]{27}~', $r->body()) === 1);
+
+        /* Anything else gets an id from Cloudflare, so the designer keeps converting it. */
+        Http::fake([self::API.'images/v2/direct_upload' => Http::response($this->ok([
+            'id' => 'abc', 'uploadURL' => 'https://upload.imagedelivery.net/one-time',
+        ]))]);
+        $this->actingAs($admin, 'admin')->postJson(route('admin.uploads.image'), ['srgb' => false])->assertOk();
+        Http::assertNotSent(fn ($r) => str_contains($r->body(), 'srgb-ready/'));
+    }
+
     public function test_upload_addresses_are_closed_to_guests(): void
     {
         Http::fake();

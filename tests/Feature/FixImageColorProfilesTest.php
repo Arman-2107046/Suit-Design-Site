@@ -29,12 +29,12 @@ class FixImageColorProfilesTest extends TestCase
             'services.cloudflare.images_hash' => 'HASH',
         ]);
 
-        @unlink(storage_path('app/color-profile-fix.json'));
+        @unlink(storage_path('app/color-profile-srgb.json'));
     }
 
     protected function tearDown(): void
     {
-        @unlink(storage_path('app/color-profile-fix.json'));
+        @unlink(storage_path('app/color-profile-srgb.json'));
 
         parent::tearDown();
     }
@@ -78,7 +78,7 @@ class FixImageColorProfilesTest extends TestCase
 
         $this->artisan('media:fix-color-profiles')
             ->expectsOutputToContain('4 images in use, 4 still to check.')
-            ->expectsOutputToContain('3 of the images checked are missing their Adobe RGB profile.')
+            ->expectsOutputToContain('3 of the images checked are in Adobe RGB and need converting.')
             ->expectsOutputToContain('Dry run')
             ->assertSuccessful();
 
@@ -86,7 +86,7 @@ class FixImageColorProfilesTest extends TestCase
         $this->assertSame(self::DELIVERY.'6c919fe2-uuid/public', Fabric::where('name', 'faded-body')->value('image'));
     }
 
-    public function test_executing_uploads_a_tagged_copy_and_points_everything_at_it(): void
+    public function test_executing_uploads_a_converted_copy_and_points_everything_at_it(): void
     {
         $this->fakeCloudflare();
         $this->seedImages();
@@ -95,22 +95,22 @@ class FixImageColorProfilesTest extends TestCase
             ->expectsOutputToContain('3 images fixed in all')
             ->assertSuccessful();
 
-        /* The copy went up under its new id, carrying the profile. */
+        /* The copy went up under its new id, converted and carrying the sRGB profile. */
         Http::assertSent(fn (Request $r) => $r->method() === 'POST'
-            && str_contains($r->body(), 'srgb/6c919fe2-uuid')
-            && str_contains($r->body(), 'iCCP'));
+            && str_contains($r->body(), 'srgb-ready/6c919fe2-uuid')
+            && str_contains($r->body(), 'sRGB IEC61966-2.1'));
 
-        $this->assertSame(self::DELIVERY.'srgb/6c919fe2-uuid/public', Fabric::where('name', 'faded-body')->value('image'));
+        $this->assertSame(self::DELIVERY.'srgb-ready/6c919fe2-uuid/public', Fabric::where('name', 'faded-body')->value('image'));
         $this->assertSame(self::DELIVERY.'already-srgb/public', Fabric::where('name', 'srgb-body')->value('image'));
 
         /* A form's saved path and its address move together, so they still agree. */
         $settings = HomepageSetting::first();
-        $this->assertSame('srgb/homepage/01HERO.png', $settings->hero_image);
+        $this->assertSame('srgb-ready/homepage/01HERO.png', $settings->hero_image);
         $this->assertSame(Storage::disk('cloudflare')->url($settings->hero_image), $settings->hero_image_url);
 
         /* Paths and addresses inside JSON, slashes escaped, too. */
-        $this->assertSame('srgb/homepage/logos/visa.jpg', $settings->payment_logos[0]['path']);
-        $this->assertSame(self::DELIVERY.'srgb/homepage/logos/visa.jpg/public', $settings->payment_logos[0]['url']);
+        $this->assertSame('srgb-ready/homepage/logos/visa.jpg', $settings->payment_logos[0]['path']);
+        $this->assertSame(self::DELIVERY.'srgb-ready/homepage/logos/visa.jpg/public', $settings->payment_logos[0]['url']);
 
         /* The originals are kept unless asked: another copy of the site may still use them. */
         Http::assertNotSent(fn (Request $r) => $r->method() === 'DELETE');
@@ -128,7 +128,7 @@ class FixImageColorProfilesTest extends TestCase
             ->assertSuccessful();
 
         Http::assertNothingSent();
-        $this->assertSame(self::DELIVERY.'srgb/6c919fe2-uuid/public', Fabric::where('name', 'faded-body')->value('image'));
+        $this->assertSame(self::DELIVERY.'srgb-ready/6c919fe2-uuid/public', Fabric::where('name', 'faded-body')->value('image'));
     }
 
     public function test_the_originals_go_only_when_asked(): void
@@ -144,12 +144,12 @@ class FixImageColorProfilesTest extends TestCase
         Http::assertNotSent(fn (Request $r) => $r->method() === 'DELETE' && str_contains($r->url(), 'already-srgb'));
     }
 
-    public function test_a_form_upload_through_the_disk_gets_the_profile_too(): void
+    public function test_a_form_upload_through_the_disk_is_converted_too(): void
     {
         $this->fakeCloudflare();
 
         Storage::disk('cloudflare')->put('homepage/hero.png', ColorProfileTest::png(ColorProfileTest::xmp(65535)));
 
-        Http::assertSent(fn (Request $r) => $r->method() === 'POST' && str_contains($r->body(), 'iCCP'));
+        Http::assertSent(fn (Request $r) => $r->method() === 'POST' && str_contains($r->body(), 'sRGB IEC61966-2.1'));
     }
 }

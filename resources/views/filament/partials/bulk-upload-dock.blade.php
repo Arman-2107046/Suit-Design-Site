@@ -68,15 +68,19 @@
         }
 
         /*
-         * Renders exported from Adobe RGB documents without their profile look
-         * washed out beside sRGB ones. Such a file gets the profile attached
-         * before it leaves the browser — the bytes come ready-made from
-         * App\Support\ColorProfile, which explains it and does the same on the
-         * server. No pixel changes; anything else goes up untouched.
+         * The suit renders come out of Adobe RGB documents, and a browser
+         * reads colours with no profile (or Photoshop's "uncalibrated" note)
+         * as sRGB, so they look washed out. Before such a file leaves the
+         * browser its colours are converted to sRGB, by the same maths the
+         * designer uses, and an sRGB profile is embedded; a file already in
+         * sRGB goes up as it is. Both are then stored under an srgb-ready/ id,
+         * which tells the designer to show them without converting again.
+         * The profile bytes come from App\Support\ColorProfile, which does the
+         * same for form uploads.
          */
         const decode64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-        const ICC_PNG_CHUNK = decode64(@js(base64_encode(\App\Support\ColorProfile::pngChunk())));
-        const ICC_JPEG_SEGMENT = decode64(@js(base64_encode(\App\Support\ColorProfile::jpegSegment())));
+        const SRGB_PNG_CHUNK = decode64(@js(base64_encode(\App\Support\ColorProfile::pngChunk())));
+        const SRGB_JPEG_SEGMENT = decode64(@js(base64_encode(\App\Support\ColorProfile::jpegSegment())));
 
         function byteString(bytes) {
             let s = '';
@@ -84,81 +88,157 @@
             return s;
         }
 
-        /* Photoshop's "uncalibrated" colour space (65535), in XMP or binary EXIF of either byte order. */
-        function markedUncalibrated(meta) {
-            return /exif:ColorSpace(?:="|>)65535/.test(meta)
-                || meta.includes('\xA0\x01\x00\x03\x00\x00\x00\x01\xFF\xFF')
-                || meta.includes('\x01\xA0\x03\x00\x01\x00\x00\x00\xFF\xFF');
+        /* EXIF ColorSpace from XMP or binary EXIF of either byte order: 1 is sRGB, 65535 "uncalibrated". */
+        function exifColourSpace(meta) {
+            const xmp = /exif:ColorSpace(?:="|>)(\d+)/.exec(meta);
+            if (xmp) return Number(xmp[1]);
+            let at = meta.indexOf('\xA0\x01\x00\x03\x00\x00\x00\x01');
+            if (at >= 0) return (meta.charCodeAt(at + 8) << 8) | meta.charCodeAt(at + 9);
+            at = meta.indexOf('\x01\xA0\x03\x00\x01\x00\x00\x00');
+            if (at >= 0) return meta.charCodeAt(at + 8) | (meta.charCodeAt(at + 9) << 8);
+            return null;
         }
 
-        function pngWithProfile(file, bytes) {
+        /* Which space an embedded profile describes, by its name (ASCII in v2 profiles, UTF-16 in v4). */
+        function profileSpace(icc) {
+            const utf16 = (name) => Array.from(name, (c) => '\0' + c).join('');
+            const has = (name) => icc.includes(name) || icc.includes(utf16(name));
+            return has('Adobe RGB') ? 'adobe-rgb' : has('sRGB') ? 'srgb' : 'other';
+        }
+
+        async function inflate(bytes) {
+            if (typeof DecompressionStream !== 'function') return '';
+            const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate'));
+            return byteString(new Uint8Array(await new Response(stream).arrayBuffer()));
+        }
+
+        /* 'adobe-rgb' | 'srgb' | 'other' | 'unknown', mirroring ColorProfile::colourSpace(). */
+        async function colourSpace(bytes, isPng) {
             const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-            const parts = [];
+            let icc = null;
+            let srgbChunk = false;
             let meta = '';
-            let kept = 0;
 
-            for (let at = 8; at + 12 <= bytes.length;) {
-                const length = view.getUint32(at);
-                const type = byteString(bytes.subarray(at + 4, at + 8));
-                const end = at + 12 + length;
+            if (isPng) {
+                for (let at = 8; at + 12 <= bytes.length;) {
+                    const length = view.getUint32(at);
+                    const type = byteString(bytes.subarray(at + 4, at + 8));
+                    const data = bytes.subarray(at + 8, at + 8 + length);
 
-                if (at === 8 && type !== 'IHDR') return null;
-                if (type === 'iCCP' || type === 'sRGB') return null;
-                if (['iTXt', 'tEXt', 'zTXt', 'eXIf'].includes(type)) meta += byteString(bytes.subarray(at + 8, at + 8 + length));
-
-                if (type === 'IHDR') {
-                    parts.push(file.slice(0, end), ICC_PNG_CHUNK);
-                    kept = end;
-                } else if (type === 'gAMA' || type === 'cHRM') {
-                    /* With a profile present these would only contradict it. */
-                    parts.push(file.slice(kept, at));
-                    kept = end;
+                    if (type === 'iCCP') {
+                        const name = byteString(data.subarray(0, data.indexOf(0)));
+                        icc = name + ' ' + await inflate(data.subarray(name.length + 2)).catch(() => '');
+                    } else if (type === 'sRGB') {
+                        srgbChunk = true;
+                    } else if (['iTXt', 'tEXt', 'zTXt', 'eXIf'].includes(type)) {
+                        meta += byteString(data);
+                    } else if (type === 'IDAT' || type === 'IEND') {
+                        break;
+                    }
+                    at += 12 + length;
                 }
+            } else {
+                for (let at = 2; at + 4 <= bytes.length && bytes[at] === 0xff;) {
+                    const marker = bytes[at + 1];
+                    if (marker === 0xda) break; /* start of scan: the headers are over */
 
-                if (type === 'IEND') break;
-                at = end;
+                    const length = view.getUint16(at + 2);
+                    const segment = bytes.subarray(at + 4, at + 2 + length);
+
+                    /* A large profile spans several segments, each after a 2-byte sequence number. */
+                    if (marker === 0xe2 && byteString(segment.subarray(0, 12)) === 'ICC_PROFILE\0') icc = (icc ?? '') + byteString(segment.subarray(14));
+                    else if (marker === 0xe1) meta += byteString(segment);
+                    at += 2 + length;
+                }
             }
 
-            if (!parts.length || !markedUncalibrated(meta)) return null;
-
-            parts.push(file.slice(kept));
-            return parts;
+            if (icc !== null) return profileSpace(icc);
+            if (srgbChunk) return 'srgb';
+            const exif = exifColourSpace(meta);
+            return exif === 65535 ? 'adobe-rgb' : exif === 1 ? 'srgb' : 'unknown';
         }
 
-        function jpegWithProfile(file, bytes) {
-            const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-            let meta = '';
+        /* Adobe RGB code values to sRGB ones in place: the same tables and matrix as Welcome.jsx. */
+        let adobeToSrgb = null;
+        function makeAdobeToSrgb() {
+            const toLinear = new Float32Array(256);
+            for (let i = 0; i < 256; i++) toLinear[i] = Math.pow(i / 255, 563 / 256);
+            const N = 4096;
+            const toSrgb = new Uint8ClampedArray(N + 1);
+            for (let i = 0; i <= N; i++) {
+                const v = i / N;
+                toSrgb[i] = Math.round((v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055) * 255);
+            }
+            const enc = (v) => toSrgb[v <= 0 ? 0 : v >= 1 ? N : (v * N + 0.5) | 0];
+            return (data) => {
+                for (let i = 0; i < data.length; i += 4) {
+                    if (data[i + 3] === 0) continue;
+                    const r = toLinear[data[i]];
+                    const g = toLinear[data[i + 1]];
+                    const b = toLinear[data[i + 2]];
+                    data[i] = enc(1.39835 * r - 0.39835 * g);
+                    data[i + 1] = enc(g);
+                    data[i + 2] = enc(-0.04292 * g + 1.04292 * b);
+                }
+            };
+        }
+
+        async function convertToSrgb(file, isPng) {
+            /* The raw numbers: no colour management, no premultiplying. */
+            const bitmap = await createImageBitmap(file, { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
+            const canvas = document.createElement('canvas');
+            canvas.width = bitmap.width;
+            canvas.height = bitmap.height;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            ctx.drawImage(bitmap, 0, 0);
+            bitmap.close();
+
+            const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            (adobeToSrgb ??= makeAdobeToSrgb())(image.data);
+            ctx.putImageData(image, 0, 0);
+
+            const blob = await new Promise((resolve, reject) => canvas.toBlob(
+                (b) => (b ? resolve(b) : reject(new Error('could not encode'))),
+                isPng ? 'image/png' : 'image/jpeg',
+                0.92,
+            ));
+            const out = new Uint8Array(await blob.arrayBuffer());
+            canvas.width = canvas.height = 0;
+
+            /* The profile goes straight after the PNG header, or after the JPEG's JFIF header, which has to stay first. */
             let insertAt = 2;
+            if (isPng) insertAt = 8 + 12 + new DataView(out.buffer).getUint32(8);
+            else if (out[2] === 0xff && out[3] === 0xe0) insertAt = 4 + ((out[4] << 8) | out[5]);
 
-            for (let at = 2; at + 4 <= bytes.length && bytes[at] === 0xff;) {
-                const marker = bytes[at + 1];
-                if (marker === 0xda) break; /* start of scan: the headers are over */
-
-                const length = view.getUint16(at + 2);
-                const segment = bytes.subarray(at + 4, at + 2 + length);
-
-                if (marker === 0xe2 && byteString(segment.subarray(0, 12)) === 'ICC_PROFILE\0') return null;
-                if (marker === 0xe1) meta += byteString(segment);
-                /* JFIF and EXIF have to stay first; the profile goes straight after them. */
-                if (marker === 0xe0 || marker === 0xe1) insertAt = at + 2 + length;
-
-                at += 2 + length;
-            }
-
-            if (!markedUncalibrated(meta)) return null;
-
-            return [file.slice(0, insertAt), ICC_JPEG_SEGMENT, file.slice(insertAt)];
+            return new File(
+                [out.subarray(0, insertAt), isPng ? SRGB_PNG_CHUNK : SRGB_JPEG_SEGMENT, out.subarray(insertAt)],
+                file.name,
+                { type: isPng ? 'image/png' : 'image/jpeg' },
+            );
         }
 
-        async function withColorProfile(file) {
+        /*
+         * The file to upload, and whether its colours are now sRGB. Renders that
+         * say nothing about their colours are Adobe RGB, as the designer assumes.
+         * Other formats, other declared spaces, and anything that fails to
+         * convert go up untouched and unmarked, so the designer treats them as before.
+         */
+        async function asSrgb(file) {
             const bytes = new Uint8Array(await file.arrayBuffer());
             const at = (offset, ...expected) => expected.every((b, i) => bytes[offset + i] === b);
+            const isPng = at(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
 
-            const parts = at(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a) ? pngWithProfile(file, bytes)
-                : at(0, 0xff, 0xd8) ? jpegWithProfile(file, bytes)
-                : null;
+            if (!isPng && !at(0, 0xff, 0xd8)) return { body: file, srgb: false };
 
-            return parts ? new File(parts, file.name, { type: file.type }) : file;
+            const space = await colourSpace(bytes, isPng);
+            if (space === 'srgb') return { body: file, srgb: true };
+            if (space === 'other') return { body: file, srgb: false };
+
+            try {
+                return { body: await convertToSrgb(file, isPng), srgb: true };
+            } catch (e) {
+                return { body: file, srgb: false };
+            }
         }
 
         const store = {
@@ -447,7 +527,7 @@
 
             async uploadOne(f) {
                 /* A file that cannot be read for this goes up as it is; the upload reports the real problem. */
-                const body = await withColorProfile(f.file).catch(() => f.file);
+                const { body, srgb } = await asSrgb(f.file).catch(() => ({ body: f.file, srgb: false }));
 
                 for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
                     if (this.cancelRequested) return this.backToPending(f);
@@ -458,7 +538,7 @@
                     this.emitSoon();
 
                     try {
-                        const target = await this.mintUploadUrl();
+                        const target = await this.mintUploadUrl(srgb);
                         f.url = await this.postFile(f, body, target.uploadURL);
                         this.advance(f, f.size);
                         f.status = 'uploaded';
@@ -494,13 +574,14 @@
              * so the API token never reaches the browser; the file then goes
              * straight to Cloudflare without passing through PHP.
              */
-            async mintUploadUrl() {
+            async mintUploadUrl(srgb) {
                 let res;
 
                 try {
                     res = await fetch(this.uploadEndpoint, {
                         method: 'POST',
-                        headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': this.csrf() },
+                        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf() },
+                        body: JSON.stringify({ srgb }),
                     });
                 } catch (e) {
                     throw failure('Could not reach the server', { retryable: true });
