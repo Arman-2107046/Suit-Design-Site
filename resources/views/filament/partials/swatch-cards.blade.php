@@ -77,6 +77,21 @@
     .dark .ct-fit-contain { background: radial-gradient(circle at 50% 38%, #f8fafc 0%, #cbd5e1 75%); }
     .dark .ct-swatch-foot { border-top-color: rgba(255, 255, 255, 0.08); }
 
+    /* The Grid / List switch in the toolbar (partials/image-view-switch) */
+    .ct-view-switch { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: #f1f5f9; box-shadow: inset 0 0 0 1px #e2e8f0; }
+    .ct-view-switch-btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 7px; font-size: 13px; font-weight: 500; color: #64748b; transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease; }
+    .ct-view-switch-btn:hover { color: #0f172a; }
+    .ct-view-switch-btn.is-active { background: #fff; color: var(--primary-600); box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.04); }
+    .ct-view-switch-btn:disabled { cursor: progress; }
+    .ct-view-switch-icon { width: 16px; height: 16px; }
+
+    .dark .ct-view-switch { background: rgba(255, 255, 255, 0.05); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
+    .dark .ct-view-switch-btn { color: #a1a1aa; }
+    .dark .ct-view-switch-btn:hover { color: #fafafa; }
+    .dark .ct-view-switch-btn.is-active { background: rgba(255, 255, 255, 0.1); color: var(--primary-300); box-shadow: none; }
+
+    @media (max-width: 640px) { .ct-view-switch-btn span { display: none; } }
+
     @media (prefers-reduced-motion: reduce) {
         .fi-ta-record.ct-swatch, .ct-swatch-img { transition: none; }
         .fi-ta-record.ct-swatch:hover { transform: none; }

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\BodyButtons\Tables;
 
+use App\Filament\Support\ImageViews;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -14,7 +15,7 @@ class BodyButtonsTable
 {
     public static function configure(Table $table): Table
     {
-        return $table
+        $table
             ->reorderable('sort_order')
             ->defaultSort('sort_order')
             ->columns([
@@ -70,5 +71,7 @@ class BodyButtonsTable
                     DeleteBulkAction::make(),
                 ]),
             ]);
+
+        return ImageViews::apply($table, image: 'image', title: 'buttonImage.name', details: ['bodyType.name', ImageViews::when('is_default', 'Default')], fit: 'contain');
     }
 }

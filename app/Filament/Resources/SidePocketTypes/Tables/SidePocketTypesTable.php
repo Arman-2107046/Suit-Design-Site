@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\SidePocketTypes\Tables;
 
+use App\Filament\Support\ImageViews;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -13,7 +14,7 @@ class SidePocketTypesTable
 {
     public static function configure(Table $table): Table
     {
-        return $table
+        $table
             ->reorderable('sort_order')
             ->defaultSort('sort_order')
             ->columns([
@@ -45,5 +46,7 @@ class SidePocketTypesTable
                     DeleteBulkAction::make(),
                 ]),
             ]);
+
+        return ImageViews::apply($table, image: 'diagram', details: ['code'], fit: 'contain', status: null);
     }
 }

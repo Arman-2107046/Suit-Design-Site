@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\SidePocketTypes\Pages;
 
 use App\Filament\Concerns\BustsCacheOnReorder;
+use App\Filament\Concerns\HasImageViews;
 use App\Filament\Resources\SidePocketTypes\SidePocketTypeResource;
 use App\Models\SidePocketType;
 use Filament\Actions\Action;
@@ -13,6 +14,7 @@ use Filament\Resources\Pages\ListRecords;
 class ListSidePocketTypes extends ListRecords
 {
     use BustsCacheOnReorder;
+    use HasImageViews;
 
     protected static string $resource = SidePocketTypeResource::class;
 

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\LiningTypes\Tables;
 
+use App\Filament\Support\ImageViews;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -13,7 +14,7 @@ class LiningTypesTable
 {
     public static function configure(Table $table): Table
     {
-        return $table
+        $table
             ->reorderable('sort_order')
             ->defaultSort('sort_order')
             ->columns([
@@ -43,5 +44,7 @@ class LiningTypesTable
                     DeleteBulkAction::make(),
                 ]),
             ]);
+
+        return ImageViews::apply($table, image: 'diagram', fit: 'contain', status: null);
     }
 }

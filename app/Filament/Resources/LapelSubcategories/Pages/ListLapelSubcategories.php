@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\LapelSubcategories\Pages;
 
 use App\Filament\Concerns\BustsCacheOnReorder;
+use App\Filament\Concerns\HasImageViews;
 use App\Filament\Imports\LapelSubCategoryImporter;
 use App\Filament\Resources\LapelSubcategories\LapelSubcategoryResource;
 use App\Models\LapelSubCategory;
@@ -15,6 +16,7 @@ use Filament\Resources\Pages\ListRecords;
 class ListLapelSubcategories extends ListRecords
 {
     use BustsCacheOnReorder;
+    use HasImageViews;
 
     protected static string $resource = LapelSubcategoryResource::class;
 

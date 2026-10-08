@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\CustomLinings\Tables;
 
+use App\Filament\Support\ImageViews;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -14,7 +15,7 @@ class CustomLiningsTable
 {
     public static function configure(Table $table): Table
     {
-        return $table
+        $table
             ->reorderable('sort_order')
             ->defaultSort('sort_order')
             ->columns([
@@ -119,5 +120,7 @@ class CustomLiningsTable
                     DeleteBulkAction::make(),
                 ]),
             ]);
+
+        return ImageViews::apply($table, image: 'image', title: 'customLiningFabric.name', details: ['liningType.name', ImageViews::when('is_default', 'Default')], fit: 'contain');
     }
 }

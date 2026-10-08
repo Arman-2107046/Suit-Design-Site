@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\DefaultLinings\Pages;
 
 use App\Filament\Concerns\BustsCacheOnReorder;
+use App\Filament\Concerns\HasImageViews;
 use App\Filament\Resources\DefaultLinings\DefaultLiningResource;
 use Filament\Actions\CreateAction;
 use Filament\Resources\Pages\ListRecords;
@@ -10,6 +11,7 @@ use Filament\Resources\Pages\ListRecords;
 class ListDefaultLinings extends ListRecords
 {
     use BustsCacheOnReorder;
+    use HasImageViews;
 
     protected static string $resource = DefaultLiningResource::class;
 

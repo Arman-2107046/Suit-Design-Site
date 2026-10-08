@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ChestPockets\Tables;
 
+use App\Filament\Support\ImageViews;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -14,7 +15,7 @@ class ChestPocketsTable
 {
     public static function configure(Table $table): Table
     {
-        return $table
+        $table
             ->reorderable('sort_order')
             ->defaultSort('sort_order')
             ->columns([
@@ -55,5 +56,7 @@ class ChestPocketsTable
                     DeleteBulkAction::make(),
                 ]),
             ]);
+
+        return ImageViews::apply($table, image: 'image', title: 'fabric.name', details: ['chestPocketType.name', ImageViews::when('is_default', 'Default')], fit: 'contain');
     }
 }

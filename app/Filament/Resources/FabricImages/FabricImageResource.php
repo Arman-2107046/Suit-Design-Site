@@ -5,6 +5,7 @@ namespace App\Filament\Resources\FabricImages;
 use App\Filament\Resources\FabricImages\Pages\CreateFabricImage;
 use App\Filament\Resources\FabricImages\Pages\EditFabricImage;
 use App\Filament\Resources\FabricImages\Pages\ListFabricImages;
+use App\Filament\Support\ImageViews;
 use App\Models\FabricImage;
 use BackedEnum;
 use Filament\Actions\BulkActionGroup;
@@ -70,7 +71,7 @@ class FabricImageResource extends Resource
 
     public static function table(Table $table): Table
     {
-        return $table
+        $table
             ->defaultGroup('fabric.name')
             ->groups([
                 Group::make('fabric.name')->label('Fabric')->collapsible(),
@@ -99,6 +100,11 @@ class FabricImageResource extends Resource
                     DeleteBulkAction::make(),
                 ]),
             ]);
+
+        return ImageViews::apply($table, image: 'url', title: 'fabric.name', status: null, details: [
+            fn (FabricImage $record) => FabricImage::KINDS[$record->kind] ?? $record->kind,
+            'caption',
+        ]);
     }
 
     public static function getPages(): array

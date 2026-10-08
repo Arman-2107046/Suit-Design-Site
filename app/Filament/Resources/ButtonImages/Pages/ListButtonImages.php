@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\ButtonImages\Pages;
 
 use App\Filament\Concerns\BustsCacheOnReorder;
+use App\Filament\Concerns\HasImageViews;
 use App\Filament\Imports\ButtonImageImporter;
 use App\Filament\Resources\ButtonImages\ButtonImageResource;
 use App\Models\ButtonImage;
@@ -15,6 +16,7 @@ use Filament\Resources\Pages\ListRecords;
 class ListButtonImages extends ListRecords
 {
     use BustsCacheOnReorder;
+    use HasImageViews;
 
     protected static string $resource = ButtonImageResource::class;
 

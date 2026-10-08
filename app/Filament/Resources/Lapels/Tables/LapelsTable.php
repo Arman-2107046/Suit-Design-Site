@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Lapels\Tables;
 
+use App\Filament\Support\ImageViews;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -14,7 +15,7 @@ class LapelsTable
 {
     public static function configure(Table $table): Table
     {
-        return $table
+        $table
             ->reorderable('sort_order')
             ->defaultSort('sort_order')
             ->columns([
@@ -23,7 +24,9 @@ class LapelsTable
                     ->sortable(),
                 TextColumn::make('fabric.name')
                     ->searchable(),
-                TextColumn::make('body.name')
+                /* A body has no name of its own: it is a fabric cut to a body type */
+                TextColumn::make('body.bodyType.name')
+                    ->label('Body')
                     ->searchable(),
                 TextColumn::make('lapelCategory.name')
                     ->searchable(),
@@ -57,5 +60,7 @@ class LapelsTable
                     DeleteBulkAction::make(),
                 ]),
             ]);
+
+        return ImageViews::apply($table, image: 'image', title: 'fabric.name', details: ['lapelCategory.name', 'lapelSubcategory.name', ImageViews::when('is_default', 'Default')], fit: 'contain');
     }
 }

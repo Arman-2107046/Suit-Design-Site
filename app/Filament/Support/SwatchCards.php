@@ -43,6 +43,16 @@ final class SwatchCards
             ->extraAttributes(['class' => 'ct-swatch-media']);
     }
 
+    /** The same picture as a small square for the list view, again sized down from the original. */
+    public static function thumbnail(string $field, string $label = 'Picture'): ImageColumn
+    {
+        return ImageColumn::make($field)
+            ->label($label)
+            ->state(fn (Model $record) => ImageUrl::sized($record->{$field}, 160))
+            ->square()
+            ->size(48);
+    }
+
     /** The on/off switch, with words beside it so its meaning is never a guess. */
     public static function toggle(string $field = 'status', string $on = 'Live', string $off = 'Hidden'): Split
     {

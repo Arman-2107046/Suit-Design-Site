@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Sleeves\Tables;
 
+use App\Filament\Support\ImageViews;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -14,7 +15,7 @@ class SleevesTable
 {
     public static function configure(Table $table): Table
     {
-        return $table
+        $table
             ->reorderable('sort_order')
             ->defaultSort('sort_order')
             ->columns([
@@ -53,5 +54,7 @@ class SleevesTable
                     DeleteBulkAction::make(),
                 ]),
             ]);
+
+        return ImageViews::apply($table, image: 'image', title: 'fabric.name', details: ['sleeveType.name', ImageViews::when('is_default', 'Default')], fit: 'contain');
     }
 }

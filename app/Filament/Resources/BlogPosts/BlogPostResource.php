@@ -6,6 +6,7 @@ use Filament\Facades\Filament;
 use App\Filament\Resources\BlogPosts\Pages\CreateBlogPost;
 use App\Filament\Resources\BlogPosts\Pages\EditBlogPost;
 use App\Filament\Resources\BlogPosts\Pages\ListBlogPosts;
+use App\Filament\Support\ImageViews;
 use App\Models\BlogPost;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -97,7 +98,7 @@ class BlogPostResource extends Resource
 
     public static function table(Table $table): Table
     {
-        return $table
+        $table
             ->defaultSort('published_at', 'desc')
             ->columns([
                 ImageColumn::make('cover_image_url')->label('')->square()->size(48),
@@ -133,6 +134,12 @@ class BlogPostResource extends Resource
                     DeleteBulkAction::make(),
                 ]),
             ]);
+
+        return ImageViews::apply($table, image: 'cover_image_url', title: 'title', status: null, details: [
+            'category.name',
+            fn (BlogPost $record) => BlogPost::STATUSES[$record->status] ?? $record->status,
+            ImageViews::when('is_featured', 'Featured'),
+        ]);
     }
 
     public static function getPages(): array

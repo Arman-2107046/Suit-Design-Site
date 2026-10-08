@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\LiningTypes\Pages;
 
 use App\Filament\Concerns\BustsCacheOnReorder;
+use App\Filament\Concerns\HasImageViews;
 use App\Filament\Resources\LiningTypes\LiningTypeResource;
 use Filament\Actions\CreateAction;
 use Filament\Resources\Pages\ListRecords;
@@ -10,6 +11,7 @@ use Filament\Resources\Pages\ListRecords;
 class ListLiningTypes extends ListRecords
 {
     use BustsCacheOnReorder;
+    use HasImageViews;
 
     protected static string $resource = LiningTypeResource::class;
 

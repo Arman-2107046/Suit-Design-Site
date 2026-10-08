@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\LapelCategories\Tables;
 
+use App\Filament\Support\ImageViews;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -15,7 +16,7 @@ class LapelCategoriesTable
 {
     public static function configure(Table $table): Table
     {
-        return $table
+        $table
             ->reorderable('sort_order')
             ->defaultSort('sort_order')
             ->columns([
@@ -57,5 +58,7 @@ class LapelCategoriesTable
                     DeleteBulkAction::make(),
                 ]),
             ]);
+
+        return ImageViews::apply($table, image: 'diagram', details: [ImageViews::when('is_default', 'Default')], fit: 'contain');
     }
 }

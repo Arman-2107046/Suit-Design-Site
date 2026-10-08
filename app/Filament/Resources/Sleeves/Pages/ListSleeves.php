@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Sleeves\Pages;
 
 use App\Filament\Concerns\BustsCacheOnReorder;
+use App\Filament\Concerns\HasImageViews;
 use App\Filament\Resources\Sleeves\SleeveResource;
 use Filament\Actions\CreateAction;
 use Filament\Resources\Pages\ListRecords;
@@ -10,6 +11,7 @@ use Filament\Resources\Pages\ListRecords;
 class ListSleeves extends ListRecords
 {
     use BustsCacheOnReorder;
+    use HasImageViews;
 
     protected static string $resource = SleeveResource::class;
 

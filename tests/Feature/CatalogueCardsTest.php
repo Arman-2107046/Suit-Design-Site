@@ -66,6 +66,36 @@ class CatalogueCardsTest extends TestCase
         $this->assertSame(2, Activity::where('event', 'updated')->where('admin_name', 'Sara')->count());
     }
 
+    public function test_a_picture_list_switches_between_grid_and_list_and_remembers_it(): void
+    {
+        $this->actingAs(Admin::factory()->create(), 'admin');
+        $this->fabric();
+        $this->fabric(['name' => 'Grey Flannel', 'is_default' => false]);
+
+        Livewire::test(ListFabrics::class)
+            ->assertSeeHtml('ct-swatch')
+            ->call('switchImageView', 'list')
+            ->assertDontSeeHtml('ct-swatch ')
+            ->assertSee('Cloth')
+            ->assertSeeHtml('w=160,fit=scale-down,f=auto')
+            /* the search still finds by name in either view */
+            ->set('tableSearch', 'Flannel')
+            ->assertSee('Grey Flannel')
+            ->assertDontSee('Navy Twill');
+
+        /* Coming back to the page keeps the rows */
+        Livewire::test(ListFabrics::class)->assertSet('imageView', 'list')->assertDontSeeHtml('ct-swatch ');
+
+        Livewire::test(ListFabrics::class)
+            ->call('switchImageView', 'grid')
+            ->assertSeeHtml('ct-swatch')
+            ->set('tableSearch', 'Flannel')
+            ->assertSee('Grey Flannel')
+            ->assertDontSee('Navy Twill')
+            ->call('switchImageView', 'sideways')
+            ->assertSet('imageView', 'grid');
+    }
+
     public function test_a_button_style_switched_off_leaves_the_configurator(): void
     {
         $fabric = $this->fabric();

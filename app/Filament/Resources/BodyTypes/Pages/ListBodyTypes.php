@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\BodyTypes\Pages;
 
 use App\Filament\Concerns\BustsCacheOnReorder;
+use App\Filament\Concerns\HasImageViews;
 use App\Filament\Resources\BodyTypes\BodyTypeResource;
 use App\Models\BodyType;
 use Filament\Actions\Action;
@@ -13,6 +14,7 @@ use Filament\Resources\Pages\ListRecords;
 class ListBodyTypes extends ListRecords
 {
     use BustsCacheOnReorder;
+    use HasImageViews;
 
     protected static string $resource = BodyTypeResource::class;
 

@@ -8,6 +8,8 @@ use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use App\Filament\NavigationGroups;
 use App\Filament\Support\AdminSearchProvider;
+use App\Filament\Support\ImageViews;
+use Filament\Tables\View\TablesRenderHook;
 use App\Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
@@ -80,6 +82,8 @@ class AdminPanelProvider extends PanelProvider
             ->renderHook(PanelsRenderHook::HEAD_END, fn (): string => view('filament.partials.admin-theme')->render())
             ->renderHook(PanelsRenderHook::STYLES_AFTER, fn (): string => view('filament.partials.bulk-upload-nav')->render())
             ->renderHook(PanelsRenderHook::BODY_END, fn (): string => view('filament.partials.bulk-upload-dock')->render())
+            /* Lists with pictures: show them as a grid of cards or as rows */
+            ->renderHook(TablesRenderHook::TOOLBAR_START, fn (array $scopes): string => ImageViews::switcher($scopes))
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
