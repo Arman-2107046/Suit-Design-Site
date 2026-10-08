@@ -242,7 +242,7 @@
         }
 
         const store = {
-            stage: 'idle', /* idle | checking | uploading | filing | done */
+            stage: 'idle', /* idle | checking | uploading | paused | filing | done */
             files: [],
             skipped: [],
             summary: null,
@@ -258,6 +258,7 @@
             celebrated: false,
             dockDismissed: false,
             cancelRequested: false,
+            pauseRequested: false,
 
             inflight: new Set(),
             listeners: new Set(),
@@ -438,7 +439,7 @@
                     this.emitSoon();
                 }
 
-                this.stage = wasStage === 'done' ? 'done' : 'idle';
+                this.stage = ['done', 'paused'].includes(wasStage) ? wasStage : 'idle';
                 this.emit();
             },
 
@@ -483,16 +484,23 @@
                 const toFile = this.files.filter((f) => f.status === 'uploaded');
                 if (toUpload.length === 0 && toFile.length === 0) return;
 
+                /* Picking up after a pause keeps the totals, so the bar carries on from where it was. */
+                const resuming = this.stage === 'paused';
+
                 this.cancelRequested = false;
+                this.pauseRequested = false;
                 this.notice = null;
                 this.summary = null;
                 this.celebrated = false;
                 this.dockDismissed = false;
 
-                this.batchSize = toUpload.length;
-                this.settled = 0;
-                this.totalBytes = Math.max(1, toUpload.reduce((n, f) => n + f.size, 0));
-                this.loadedBytes = 0;
+                const remaining = toUpload.reduce((n, f) => n + f.size, 0);
+                if (!resuming) {
+                    this.settled = 0;
+                    this.loadedBytes = 0;
+                }
+                this.batchSize = this.settled + toUpload.length;
+                this.totalBytes = Math.max(1, this.loadedBytes + remaining);
 
                 this.holdWakeLock();
 
@@ -503,8 +511,10 @@
                     const queue = toUpload.slice();
                     const worker = async () => {
                         while (queue.length && !this.cancelRequested) {
-                            await this.uploadOne(queue.shift());
-                            this.settled++;
+                            const next = queue.shift();
+                            await this.uploadOne(next);
+                            /* A file sent back to the queue by a pause has not been dealt with yet. */
+                            if (next.status !== 'pending') this.settled++;
                             this.emitSoon();
                         }
                     };
@@ -512,7 +522,17 @@
                     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, worker));
                 }
 
-                /* Whatever reached Cloudflare is filed, even after a stop. */
+                /* Paused: what has landed waits to be filed with the rest once the upload is resumed. */
+                if (this.pauseRequested) {
+                    this.stage = 'paused';
+                    this.cancelRequested = false;
+                    this.pauseRequested = false;
+                    this.releaseWakeLock();
+                    this.emit();
+                    return;
+                }
+
+                /* Whatever reached Cloudflare is filed, even after a fatal stop. */
                 if (!this.notice) await this.fileUploaded();
 
                 this.stage = 'done';
@@ -653,9 +673,10 @@
                 });
             },
 
-            /** Stop starting new uploads and abandon the ones in flight; what has landed is still filed. */
-            stop() {
+            /** Stop starting new uploads and abandon the ones in flight: they go back in the queue, and what has landed waits for the resume. */
+            pause() {
                 if (this.stage !== 'uploading') return;
+                this.pauseRequested = true;
                 this.cancelRequested = true;
                 for (const xhr of this.inflight) xhr.abort();
                 this.emit();
@@ -936,7 +957,7 @@
         destroy() { this.off && this.off(); },
         get shown() {
             if (this.here || this.s.dockDismissed) return false;
-            return this.s.uploading || this.s.stage === 'done';
+            return this.s.uploading || ['paused', 'done'].includes(this.s.stage);
         },
         n(v) { return window.bulkUploadQueue.formatCount(v); },
     }"
@@ -949,21 +970,21 @@
         <div class="bud-spin" x-show="s.uploading"></div>
         <div class="bud-dot" x-show="!s.uploading" x-bind:class="s.failCount > 0 ? 'warn' : ''"></div>
 
-        <p class="bud-title" x-text="s.stage === 'filing' ? 'Filing images' : s.uploading ? 'Uploading images' : 'Upload finished'"></p>
+        <p class="bud-title" x-text="s.stage === 'filing' ? 'Filing images' : s.uploading ? 'Uploading images' : s.stage === 'paused' ? 'Upload paused' : 'Upload finished'"></p>
 
-        <span class="bud-pct" x-show="s.uploading" x-text="Math.round(s.percent) + '%'"></span>
+        <span class="bud-pct" x-show="s.uploading || s.stage === 'paused'" x-text="Math.round(s.percent) + '%'"></span>
 
         <button type="button" class="bud-x" x-show="!s.uploading" x-on:click="window.bulkUploadQueue.dismissDock()" title="Dismiss" aria-label="Dismiss">&times;</button>
     </div>
 
     <div class="bud-bar">
-        <div class="bud-fill" x-bind:style="'width: ' + (s.uploading ? s.percent : 100) + '%;'"></div>
+        <div class="bud-fill" x-bind:style="'width: ' + (s.uploading || s.stage === 'paused' ? s.percent : 100) + '%;'"></div>
     </div>
 
     <div class="bud-meta">
-        <span x-show="s.uploading" x-text="n(s.phaseDone) + ' of ' + n(s.phaseTotal) + ' files'"></span>
+        <span x-show="s.uploading || s.stage === 'paused'" x-text="n(s.phaseDone) + ' of ' + n(s.phaseTotal) + ' files'"></span>
 
-        <span x-show="!s.uploading">
+        <span x-show="!s.uploading && s.stage !== 'paused'">
             <span x-text="n(s.okCount) + ' filed'"></span>
             <span x-show="s.failCount > 0" class="bud-bad">· <span x-text="n(s.failCount)"></span> need attention</span>
         </span>

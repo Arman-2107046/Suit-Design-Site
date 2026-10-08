@@ -462,8 +462,16 @@
             this.upload();
         },
 
-        stop() { window.bulkUploadQueue.stop(); },
-        clearAll() { window.bulkUploadQueue.clearQueue(); },
+        pause() { window.bulkUploadQueue.pause(); },
+
+        /* Empties the list, then reloads the page so it (and the table behind it) starts fresh. */
+        clearAll() {
+            const queue = window.bulkUploadQueue;
+            if (queue.snapshot().counts.uploaded > 0 && ! window.confirm('Some files are already uploaded but not filed yet. Clear them anyway?')) return;
+
+            queue.clearQueue();
+            window.location.reload();
+        },
         clearFailed() { window.bulkUploadQueue.clearFailed(); },
         clearSkipped() { window.bulkUploadQueue.clearSkipped(); this.showSkipped = false; },
         remove(id) { window.bulkUploadQueue.remove(id); },
@@ -553,7 +561,8 @@
         get stageLabel() {
             return {
                 checking: 'Checking files',
-                uploading: this.s.cancelRequested ? 'Stopping after the files in flight' : 'Uploading to Cloudflare',
+                uploading: this.s.cancelRequested ? 'Pausing…' : 'Uploading to Cloudflare',
+                paused: 'Paused: resume when you are ready',
                 filing: 'Filing into the catalogue',
                 done: 'Batch complete',
             }[this.s.stage] || 'Ready';
@@ -561,7 +570,7 @@
 
         get progressMeta() {
             if (this.s.stage === 'filing') return this.n(this.s.phaseDone) + ' of ' + this.n(this.s.phaseTotal) + ' filed';
-            if (this.s.stage === 'uploading') {
+            if (this.s.stage === 'uploading' || this.s.stage === 'paused') {
                 return this.n(this.s.phaseDone) + ' of ' + this.n(this.s.phaseTotal) + ' files · '
                     + this.bytes(this.s.loadedBytes) + ' of ' + this.bytes(this.s.totalBytes);
             }
@@ -569,7 +578,7 @@
         },
 
         get showProgress() {
-            return this.s.uploading || this.s.stage === 'done';
+            return this.s.uploading || ['paused', 'done'].includes(this.s.stage);
         },
 
         get primaryLabel() {
@@ -580,8 +589,9 @@
             return 'Upload files';
         },
 
-        get canStart() {
-            return ! this.s.busy && (this.s.counts.pending > 0 || this.s.counts.uploaded > 0);
+        /* Files waiting, or landed and not yet filed: otherwise the button opens the file picker. */
+        get hasQueue() {
+            return this.s.counts.pending > 0 || this.s.counts.uploaded > 0;
         },
 
         get breakdown() {
@@ -723,14 +733,19 @@
 
     {{-- Actions --}}
     <div class="bx-actions">
-        <button type="button" class="bx-btn bx-btn-primary" x-on:click="upload()" x-bind:disabled="! canStart" x-show="! s.uploading">
+        <button type="button" class="bx-btn bx-btn-primary" x-on:click="hasQueue ? upload() : pick()" x-bind:disabled="s.busy" x-show="! s.uploading && s.stage !== 'paused'">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path></svg>
             <span x-text="primaryLabel"></span>
         </button>
 
-        <button type="button" class="bx-btn bx-btn-stop" x-on:click="stop()" x-show="s.stage === 'uploading'" x-bind:disabled="s.cancelRequested" x-cloak style="display: none;">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"></rect></svg>
-            <span x-text="s.cancelRequested ? 'Stopping…' : 'Stop uploading'"></span>
+        <button type="button" class="bx-btn bx-btn-stop" x-on:click="pause()" x-show="s.stage === 'uploading'" x-bind:disabled="s.cancelRequested" x-cloak style="display: none;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>
+            <span x-text="s.cancelRequested ? 'Pausing…' : 'Pause'"></span>
+        </button>
+
+        <button type="button" class="bx-btn bx-btn-primary" x-on:click="upload()" x-show="s.stage === 'paused'" x-cloak style="display: none;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4 20 12 7 20 7 4"></polygon></svg>
+            <span x-text="'Resume · ' + n(s.counts.pending + s.counts.uploaded) + ' left'"></span>
         </button>
 
         <button type="button" class="bx-btn bx-btn-warn" x-on:click="retry()" x-show="! s.busy && s.counts.failed > 0" x-cloak style="display: none;">
