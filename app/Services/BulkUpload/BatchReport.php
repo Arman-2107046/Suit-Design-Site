@@ -18,6 +18,8 @@ class BatchReport
         'BT' => 'body types',
         'BD' => 'bodies',
         'DL' => 'default linings',
+        'UL' => 'unlined linings',
+        'ULP' => 'unlined plates',
         'BI' => 'button images',
         'BB' => 'body buttons',
         'SLT' => 'sleeve types',

@@ -30,6 +30,8 @@ final class NamingGuide
                 self::rule('CF', 'Lining cloth', 'CF_Name', 'CF_Blue Silk.png'),
                 self::rule('CL', 'Custom lining', 'CL_LiningType_LiningCloth', 'CL_Full Lining_Blue Silk.png'),
                 self::rule('DL', 'Default lining', 'DL_BodyCode_LiningType_Fabric', 'DL_SB1_Default_Black Wool.png'),
+                self::rule('UL', 'Unlined', 'UL_Unlined_Fabric', 'UL_Unlined_Blue Stripe.png'),
+                self::rule('ULP', 'Unlined plate', 'ULP_Unlined Plate_Fabric', 'ULP_Unlined Plate_Blue Stripe.png'),
             ]],
             ['title' => 'Jacket', 'rules' => [
                 self::rule('BT', 'Body type', 'BT_Name_Code', 'BT_Single Breasted 1 Button_SB1.png'),

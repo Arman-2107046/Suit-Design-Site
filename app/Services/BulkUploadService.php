@@ -21,6 +21,8 @@ use App\Services\BulkUpload\LiningTypesUploader;
 use App\Services\BulkUpload\DefaultLiningsUploader;
 use App\Services\BulkUpload\CustomLiningFabricsUploader;
 use App\Services\BulkUpload\CustomLiningsUploader;
+use App\Models\UnlinedLining;
+use App\Services\BulkUpload\UnlinedLiningsUploader;
 
 class BulkUploadService
 {
@@ -45,6 +47,8 @@ class BulkUploadService
         'BT' => 6,
         'BD' => 7,
         'DL' => 8,
+        'UL' => 8,
+        'ULP' => 8,
 
         'BI' => 9,
         'BB' => 10,
@@ -146,6 +150,14 @@ class BulkUploadService
                 'DL' =>
                     app(DefaultLiningsUploader::class)
                         ->handle($file),
+
+                'UL' =>
+                    app(UnlinedLiningsUploader::class)
+                        ->handle($file),
+
+                'ULP' =>
+                    app(UnlinedLiningsUploader::class)
+                        ->handle($file, UnlinedLining::PLATE),
 
                 'BI' =>
                     app(ButtonImagesUploader::class)

@@ -58,6 +58,27 @@ class SuitConfiguratorController extends Controller
         ]);
     }
 
+    /** An unlined picture as the designer reads it, or null when the fabric has none (or it is switched off). */
+    private function unlinedPayload(?\App\Models\UnlinedLining $lining): ?array
+    {
+        if (! $lining?->status) {
+            return null;
+        }
+
+        return [
+            'id' => $lining->id,
+            'image' => $lining->image,
+            'layer_index' => $lining->layer_index,
+            'type' => $lining->liningType
+                ? [
+                    'id' => $lining->liningType->id,
+                    'name' => $lining->liningType->name,
+                    'diagram' => $lining->liningType->diagram,
+                ]
+                : null,
+        ];
+    }
+
     private function buildPayload(): array
     {
         $fabrics = Fabric::with([
@@ -83,6 +104,8 @@ class SuitConfiguratorController extends Controller
             */
             'defaultLinings.liningType',
             'defaultLinings.bodyType',
+            'unlinedLining.liningType',
+            'unlinedPlate.liningType',
 
             /*
             |--------------------------------------------------------------------------
@@ -295,6 +318,21 @@ class SuitConfiguratorController extends Controller
                     */
 
                     'custom_linings' => $customLinings,
+
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Unlined
+                    |--------------------------------------------------------------------------
+                    |
+                    | The fabric with no lining: one picture, the same for every body.
+                    |
+                    */
+
+                    'unlined_lining' => $this->unlinedPayload($fabric->unlinedLining),
+
+                    /* The same with the plate */
+                    'unlined_plate' => $this->unlinedPayload($fabric->unlinedPlate),
 
 
                     /*

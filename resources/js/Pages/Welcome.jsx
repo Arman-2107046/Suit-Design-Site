@@ -435,8 +435,20 @@ const EMPTY_INTENT = {
     sidePocket: null,  // { id, typeCode, typeId, name }
     chestPocket: null, // { id, typeCode, typeId, name }
     button: null,      // { id, imageId, name } | null  (null = "Default", no overlay)
-    lining: { mode: "default", id: null, fabricId: null, typeId: null, name: null },
+    lining: { mode: "default", id: null, fabricId: null, typeId: null, name: null }, // mode: default | custom | unlined | plate
 };
+
+/*
+ * The jacket with no lining, plain or with the plate: one picture of each per
+ * fabric, so there is nothing else to remember about the choice. `field` is
+ * where the configurator puts the picture on a fabric.
+ */
+const UNLINED_KINDS = [
+    { mode: "unlined", field: "unlined_lining", label: "Unlined" },
+    { mode: "plate", field: "unlined_plate", label: "Unlined Plate" },
+];
+const unlinedIntent = (mode) => ({ mode, id: null, fabricId: null, typeId: null, name: null });
+const unlinedKind = (mode) => UNLINED_KINDS.find((k) => k.mode === mode);
 
 const defaultOf = (items) => items.find((i) => i.is_default) || items[0] || null;
 const byId = (items, id) => (id != null ? items.find((i) => i.id === id) : undefined);
@@ -521,6 +533,8 @@ function pickCustomLining(linings, want) {
 function resolveSelection(fabric, intent) {
     const body = pickBody(fabric.bodies, intent.body);
     const customLining = pickCustomLining(fabric.custom_linings, intent.lining);
+    const wantedKind = !customLining ? unlinedKind(intent.lining?.mode) : null;
+    const unlinedLining = wantedKind ? fabric[wantedKind.field] ?? null : null;
     return {
         fabric,
         body,
@@ -529,8 +543,9 @@ function resolveSelection(fabric, intent) {
         sidePocket: pickTyped(fabric.side_pockets, intent.sidePocket),
         chestPocket: pickTyped(fabric.chest_pockets, intent.chestPocket),
         button: body ? pickButton(body.body_type?.body_buttons, intent.button) : null,
-        liningMode: customLining ? "custom" : "default",
+        liningMode: customLining ? "custom" : unlinedLining ? wantedKind.mode : "default",
         customLining,
+        unlinedLining,
     };
 }
 
@@ -593,6 +608,9 @@ function describeAdjustments(intent, sel) {
     if (intent.button?.imageId != null && sel.body && sel.button?.button_image?.id !== intent.button.imageId) {
         notes.push(arrow(`${intent.button.name ?? "Selected"} buttons`, sel.button?.button_image?.name ?? "Default"));
     }
+    if (unlinedKind(intent.lining.mode) && !sel.unlinedLining) {
+        notes.push(arrow(unlinedKind(intent.lining.mode).label, "Default"));
+    }
     if (intent.lining.mode === "custom") {
         if (!sel.customLining) notes.push(arrow(`${intent.lining.name ?? "Custom"} lining`, "Default"));
         else if (intent.lining.fabricId != null && sel.customLining.fabric?.id !== intent.lining.fabricId) {
@@ -614,6 +632,7 @@ function layersFrom(sel) {
         layers.push({ type: "defaultLining", image: defaultLining.image, z: defaultLining.layer_index || 0 });
     }
     if (sel.customLining) layers.push({ type: "lining", image: sel.customLining.image, z: sel.customLining.layer_index || 100 });
+    if (sel.unlinedLining) layers.push({ type: "unlined", image: sel.unlinedLining.image, z: sel.unlinedLining.layer_index || 100 });
     if (sel.body) layers.push({ type: "body", image: sel.body.image, z: sel.body.layer_index || 100 });
     if (sel.sleeve) layers.push({ type: "sleeve", image: sel.sleeve.image, z: sel.sleeve.layer_index || 150 });
     if (sel.lapel) layers.push({ type: "lapel", image: sel.lapel.image, z: sel.lapel.layer_index || 150 });
@@ -640,6 +659,7 @@ function optionUrlsFor(sel) {
     (f.chest_pockets || []).forEach((p) => urls.push(p.image));
     (sel.body?.body_type?.body_buttons || []).forEach((b) => urls.push(b.image));
     (f.custom_linings || []).forEach((l) => urls.push(l.image));
+    UNLINED_KINDS.forEach((k) => urls.push(f[k.field]?.image));
     return urls.map(layerUrl);
 }
 
@@ -1750,6 +1770,11 @@ const SuitDesigner = () => {
         choose("lining", "default", { lining: liningIntent(null) });
     };
 
+    const handleUnlinedClick = (mode) => {
+        setShowLiningPanel(false);
+        choose("lining", mode, { lining: unlinedIntent(mode) });
+    };
+
     const handleCustomLiningClick = () => {
         setShowLiningPanel(true);
         const linings = targetFabricRef.current?.custom_linings || [];
@@ -2279,6 +2304,21 @@ const SuitDesigner = () => {
                                         />
                                     ))}
 
+                                    {UNLINED_KINDS.map((kind) => {
+                                        const unlined = selectedFabric[kind.field];
+                                        if (!unlined) return null;
+                                        return (
+                                            <LiningOptionTile
+                                                key={kind.mode}
+                                                isSelected={selection.liningMode === kind.mode}
+                                                onClick={() => handleUnlinedClick(kind.mode)}
+                                                image={unlined.type?.diagram || unlined.image}
+                                                label={unlined.type?.name || kind.label}
+                                                isLoading={isPending("lining", kind.mode)}
+                                            />
+                                        );
+                                    })}
+
                                     {selectedFabric.custom_linings?.length > 0 && (
                                         <LiningOptionTile
                                             key="custom-type"
@@ -2290,7 +2330,7 @@ const SuitDesigner = () => {
                                                     ? `${selectedFabric.custom_linings[0].type?.name || "Custom"} · ${selection.customLining.fabric?.name ?? ""}`
                                                     : selectedFabric.custom_linings[0].type?.name || "Custom"
                                             }
-                                            isLoading={pending?.kind === "lining" && pending.id !== "default"}
+                                            isLoading={pending?.kind === "lining" && pending.id !== "default" && !unlinedKind(pending.id)}
                                         />
                                     )}
                                 </OptionRow>

@@ -55,6 +55,18 @@ class Fabric extends Model
         return $this->hasOne(FabricInfo::class)->latestOfMany('updated_at');
     }
 
+    /** The picture of this fabric with no lining, offered as another lining choice. */
+    public function unlinedLining(): HasOne
+    {
+        return $this->hasOne(UnlinedLining::class)->where('kind', UnlinedLining::UNLINED);
+    }
+
+    /** The same, with the plate. */
+    public function unlinedPlate(): HasOne
+    {
+        return $this->hasOne(UnlinedLining::class)->where('kind', UnlinedLining::PLATE);
+    }
+
     public function sleeves()
     {
         return $this->orderedByType($this->hasMany(Sleeve::class), [
