@@ -171,6 +171,18 @@
     .dark .bx-stat-k, .dark .bx-pct i { color: #71717a; }
     .dark .bx-stat.good .bx-stat-n { color: #34d399; }
     .dark .bx-stat.warn .bx-stat-n { color: #fbbf24; }
+    .dark .bx-stat.bad { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.35); }
+    .dark .bx-stat.bad .bx-stat-n, .dark .bx-stat.bad .bx-stat-k { color: #f87171; }
+    .dark .bx-row.is-failed { background: rgba(239, 68, 68, 0.1); }
+    .dark .bx-row.is-failed .bx-name, .dark .bx-row.is-failed .bx-ext { color: #f87171; }
+    .dark .bx-row.is-failed .bx-ext { background: rgba(239, 68, 68, 0.16); }
+    .dark .bx-fail { background: rgba(239, 68, 68, 0.05); }
+    .dark .bx-fail-name, .dark .bx-side .bx-panel-title { color: #f87171; }
+    .dark .bx-fail-why { color: #fca5a5; }
+    .dark .bx-side { border-color: rgba(239, 68, 68, 0.35); }
+    .dark .bx-count.bad { color: #fff; background: #dc2626; }
+    .dark .bx-progress-alert { color: #fca5a5; background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.35); }
+    .dark .bx-bar.has-fail { box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.5); }
     .dark .bx-progress-meta, .dark .bx-progress-foot, .dark .bx-panel-title, .dark .bx-fail-why { color: #a1a1aa; }
     .dark .bx-bar { background: #27272a; }
     .dark .bx-spin { border-color: #3f3f46; border-top-color: #818cf8; }

@@ -47,6 +47,8 @@
     .bx-stat-k { display: block; margin-top: 4px; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: #9ca3af; }
     .bx-stat.good .bx-stat-n { color: #047857; }
     .bx-stat.warn .bx-stat-n { color: #b45309; }
+    .bx-stat.bad { background: #fef2f2; border-color: #fecaca; }
+    .bx-stat.bad .bx-stat-n, .bx-stat.bad .bx-stat-k { color: #dc2626; }
 
     /* Progress */
     .bx-progress { padding: 18px 20px 16px; background: #fff; border: 1px solid #ececf1; border-radius: 14px; animation: bx-rise 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
@@ -112,17 +114,30 @@
     .bx-pill.retrying { color: #b45309; background: #fef3c7; }
     .bx-pill.landed   { color: #0369a1; background: #e0f2fe; }
     .bx-pill.filed    { color: #047857; background: #d1fae5; }
-    .bx-pill.failed   { color: #b91c1c; background: #fee2e2; }
-    .bx-pill.refused  { color: #c2410c; background: #ffedd5; }
+    .bx-pill.failed, .bx-pill.refused { color: #fff; background: #dc2626; }
+
+    /* A file that failed: the whole row says so */
+    .bx-row.is-failed { background: #fef2f2; box-shadow: inset 3px 0 0 #dc2626; }
+    .bx-row.is-failed .bx-name { color: #b91c1c; font-weight: 600; }
+    .bx-row.is-failed .bx-ext { color: #b91c1c; background: #fee2e2; }
 
     /* Failures */
     .bx-fail { padding: 10px 14px; border-bottom: 1px solid #f6f6f8; }
     .bx-fail:last-child { border-bottom: 0; }
     .bx-fail-top { display: flex; align-items: center; gap: 8px; }
     .bx-fail-name { flex: 1; min-width: 0; margin: 0; font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .bx-fail-why { margin: 3px 0 0; font-size: 12px; line-height: 1.45; color: #6b7280; }
-    .bx-tag { flex-shrink: 0; font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; border-radius: 5px; padding: 2px 6px; color: #b91c1c; background: #fee2e2; }
-    .bx-tag.filing { color: #c2410c; background: #ffedd5; }
+    .bx-fail { background: #fffafa; }
+    .bx-fail-name { color: #b91c1c; }
+    .bx-fail-why { margin: 3px 0 0; font-size: 12px; line-height: 1.45; color: #dc2626; }
+    .bx-tag { flex-shrink: 0; font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; border-radius: 5px; padding: 2px 6px; color: #fff; background: #dc2626; }
+    .bx-side { border-color: #fecaca; }
+    .bx-side .bx-panel-title { color: #b91c1c; }
+    .bx-count.bad { color: #fff; background: #dc2626; }
+
+    /* Said as it happens, in the progress card, while the rest keeps uploading */
+    .bx-progress-alert { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; padding: 8px 12px; font-size: 12.5px; font-weight: 600; color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; }
+    .bx-progress-alert svg { flex-shrink: 0; }
+    .bx-bar.has-fail { box-shadow: 0 0 0 2px #fca5a5; }
 
     @keyframes bx-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
     @keyframes bx-fade { from { opacity: 0; } to { opacity: 1; } }
@@ -693,9 +708,9 @@
             <span class="bx-stat-n" x-text="n(s.counts.filed)"></span>
             <span class="bx-stat-k">Filed</span>
         </div>
-        <div class="bx-stat" x-bind:class="s.counts.failed ? 'warn' : ''">
+        <div class="bx-stat" x-bind:class="s.counts.failed ? 'bad' : ''">
             <span class="bx-stat-n" x-text="n(s.counts.failed)"></span>
-            <span class="bx-stat-k">Need attention</span>
+            <span class="bx-stat-k" x-text="s.counts.failed ? 'Failed' : 'Need attention'"></span>
         </div>
         <div class="bx-stat" x-bind:class="s.skippedCount ? 'warn' : ''">
             <span class="bx-stat-n" x-text="n(s.skippedCount)"></span>
@@ -713,13 +728,18 @@
             <div class="bx-pct"><span x-text="s.uploading ? Math.round(s.percent) : 100"></span><i>%</i></div>
         </div>
 
-        <div class="bx-bar">
+        <div class="bx-bar" x-bind:class="{ 'has-fail': s.counts.failed > 0 }">
             <div
                 class="bx-fill"
                 x-bind:class="{ 'is-live': s.uploading, 'is-done': ! s.uploading }"
                 x-bind:style="'width: ' + (s.uploading ? s.percent : 100) + '%;'"
             ></div>
         </div>
+
+        <p class="bx-progress-alert" x-show="s.counts.failed > 0" x-cloak style="display: none;" role="alert">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            <span x-text="n(s.counts.failed) + ' ' + plural(s.counts.failed, 'file', 'files') + ' failed' + (s.uploading ? ' so far' : '') + ': the reasons are listed under Need attention'"></span>
+        </p>
 
         <p class="bx-progress-foot" x-show="s.uploading">
             <span class="bx-spin"></span>
@@ -781,7 +801,7 @@
 
             <div class="bx-rows">
                 <template x-for="f in s.rows" :key="f.id">
-                    <div class="bx-row">
+                    <div class="bx-row" x-bind:class="{ 'is-failed': ['error', 'rejected', 'unfiled'].includes(f.status) }">
                         <span class="bx-ext" x-text="ext(f.name)"></span>
                         <span class="bx-name" x-text="f.name" x-bind:title="f.name"></span>
                         <span class="bx-size" x-text="bytes(f.size)"></span>
@@ -804,7 +824,7 @@
         <aside class="bx-panel bx-side" x-show="s.counts.failed > 0" x-cloak style="display: none;">
             <div class="bx-panel-head">
                 <h4 class="bx-panel-title">Need attention</h4>
-                <span class="bx-count warn" x-text="n(s.counts.failed)"></span>
+                <span class="bx-count bad" x-text="n(s.counts.failed)"></span>
                 <button type="button" class="bx-link" style="color: #6b7280; font-weight: 500;" x-on:click="clearFailed()" x-bind:disabled="s.busy" x-show="! s.busy">Remove</button>
             </div>
 
@@ -813,7 +833,7 @@
                     <div class="bx-fail">
                         <div class="bx-fail-top">
                             <p class="bx-fail-name" x-text="r.name" x-bind:title="r.name"></p>
-                            <span class="bx-tag" x-bind:class="r.stage === 'Filing' ? 'filing' : ''" x-text="r.stage"></span>
+                            <span class="bx-tag" x-text="r.stage"></span>
                         </div>
                         <p class="bx-fail-why" x-text="r.reason"></p>
                     </div>

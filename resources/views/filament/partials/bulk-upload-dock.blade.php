@@ -928,7 +928,7 @@
     }
     @keyframes bud-spin { to { transform: rotate(360deg); } }
     .bud-dot { width: 8px; height: 8px; flex-shrink: 0; margin: 0 3px; border-radius: 50%; background: #10b981; }
-    .bud-dot.warn { background: #f59e0b; }
+    .bud-dot.warn { background: #dc2626; }
     .bud-title { flex: 1; min-width: 0; margin: 0; font-size: 12.5px; font-weight: 600; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .bud-pct { font-size: 12px; font-weight: 600; color: #0f172a; font-variant-numeric: tabular-nums; }
     .bud-x { padding: 0 2px; background: none; border: 0; font-size: 16px; line-height: 1; color: #9ca3af; cursor: pointer; }
@@ -938,7 +938,7 @@
     .bud-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 9px 0 0; font-size: 11px; color: #6b7280; font-variant-numeric: tabular-nums; }
     .bud-link { font-size: 11px; font-weight: 600; color: #4f46e5; text-decoration: none; }
     .bud-link:hover { text-decoration: underline; }
-    .bud-bad { color: #b45309; font-weight: 600; }
+    .bud-bad { color: #dc2626; font-weight: 600; }
 
     @media (prefers-reduced-motion: reduce) {
         .bud { animation: none; }
@@ -982,7 +982,10 @@
     </div>
 
     <div class="bud-meta">
-        <span x-show="s.uploading || s.stage === 'paused'" x-text="n(s.phaseDone) + ' of ' + n(s.phaseTotal) + ' files'"></span>
+        <span x-show="s.uploading || s.stage === 'paused'">
+            <span x-text="n(s.phaseDone) + ' of ' + n(s.phaseTotal) + ' files'"></span>
+            <span x-show="s.counts.failed > 0" class="bud-bad">· <span x-text="n(s.counts.failed)"></span> failed</span>
+        </span>
 
         <span x-show="!s.uploading && s.stage !== 'paused'">
             <span x-text="n(s.okCount) + ' filed'"></span>
